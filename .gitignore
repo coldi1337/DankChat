@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+*.session*
+*.db*
+*.log
+login_qr.png
+.pytest_cache/

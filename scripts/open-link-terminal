@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if command -v xdg-terminal-exec >/dev/null 2>&1; then
+    exec xdg-terminal-exec sh "$script_dir/link-whatsapp"
+elif command -v ghostty >/dev/null 2>&1; then
+    exec ghostty -e sh "$script_dir/link-whatsapp"
+elif command -v foot >/dev/null 2>&1; then
+    exec foot sh "$script_dir/link-whatsapp"
+elif command -v kitty >/dev/null 2>&1; then
+    exec kitty sh "$script_dir/link-whatsapp"
+fi
+printf '%s\n' 'No supported terminal found. Run scripts/link-whatsapp in your terminal.' >&2
+exit 1

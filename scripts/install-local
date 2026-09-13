@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+"""Install this checkout and its optional WhatsApp sync unit without replacing settings."""
+from pathlib import Path
+import os
+import subprocess
+
+root = Path(__file__).resolve().parents[1]
+config = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
+if not config.is_absolute():
+    config = Path.home() / ".config"
+destination = config / "DankMaterialShell/plugins/DankChat"
+destination.parent.mkdir(parents=True, exist_ok=True)
+if destination.exists() or destination.is_symlink():
+    if destination.resolve() != root:
+        raise SystemExit("DankChat is already installed from a different location.")
+else:
+    destination.symlink_to(root, target_is_directory=True)
+unit = config / "systemd/user/dankchat-whatsapp.service"
+unit.parent.mkdir(parents=True, exist_ok=True)
+script = str(root / "scripts/run-whatsapp-sync").replace("%", "%%").replace("\\", "\\\\").replace('"', '\\"')
+content = f'''[Unit]
+Description=DankChat WhatsApp synchronization
+PartOf=dms.service
+After=network-online.target
+
+[Service]
+ExecStart=/bin/sh "{script}"
+Restart=on-failure
+RestartSec=10
+UMask=0077
+NoNewPrivileges=true
+StandardOutput=null
+StandardError=null
+'''
+if unit.exists() and unit.read_text() != content:
+    raise SystemExit("A different DankChat sync unit exists; review it before replacing it.")
+unit.write_text(content)
+data = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share")))
+if not data.is_absolute():
+    data = Path.home() / ".local/share"
+desktop = data / "applications/dankchat.desktop"
+desktop.parent.mkdir(parents=True, exist_ok=True)
+desktop.write_text('''[Desktop Entry]
+Type=Application
+Name=DankChat
+Comment=Telegram and WhatsApp in DankMaterialShell
+Exec=dms ipc call dankChat open
+Icon=internet-chat
+Terminal=false
+Categories=Network;InstantMessaging;
+''')
+subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
+subprocess.run(["dms", "ipc", "call", "plugin-scan", "scan"], check=True)
+print("Installed DankChat. Enable it in DMS Settings → Plugins and add its widget to DankBar.")

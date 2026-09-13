@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+umask 077
+state_home=${XDG_STATE_HOME:-"$HOME/.local/state"}
+case "$state_home" in /*) ;; *) state_home="$HOME/.local/state" ;; esac
+store_dir="$state_home/dankchat/whatsapp/store"
+[ -f "$store_dir/session.db" ] || exit 0
+exec "$HOME/.local/bin/wacli" --store "$store_dir" --lock-wait 30s sync --follow --max-reconnect 10m --stale-threshold 2m --presence-mode quiet --max-db-size 1GB --refresh-groups

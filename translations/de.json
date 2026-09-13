@@ -1,0 +1,116 @@
+{
+  "Account sessions stay on this device. Closing the window preserves your drafts until DankChat is reloaded.": {
+    "Account sessions stay on this device. Closing the window preserves your drafts until DankChat is reloaded.": "Deine Anmeldungen bleiben auf diesem Gerät. Entwürfe bleiben beim Schließen des Fensters erhalten, bis DankChat neu geladen wird."
+  },
+  "Accounts": {
+    "Accounts": "Konten"
+  },
+  "All": {
+    "All": "Alle"
+  },
+  "Choose a chat": {
+    "Choose a chat": "Chat auswählen"
+  },
+  "Choose an attachment to send": {
+    "Choose an attachment to send": "Anhang zum Senden auswählen"
+  },
+  "Connected": {
+    "Connected": "Verbunden"
+  },
+  "Could not read the service response.": {
+    "Could not read the service response.": "Die Antwort des Dienstes konnte nicht gelesen werden."
+  },
+  "Demo": {
+    "Demo": "Demo"
+  },
+  "Demo mode": {
+    "Demo mode": "Demomodus"
+  },
+  "Demo — sending disabled": {
+    "Demo — sending disabled": "Demo – Versand deaktiviert"
+  },
+  "Link Telegram": {
+    "Link Telegram": "Telegram verbinden"
+  },
+  "Link WhatsApp": {
+    "Link WhatsApp": "WhatsApp verbinden"
+  },
+  "Link WhatsApp in a terminal, then scan its QR code under Linked devices on your phone.": {
+    "Link WhatsApp in a terminal, then scan its QR code under Linked devices on your phone.": "Verbinde WhatsApp im Terminal und scanne den QR-Code unter „Verknüpfte Geräte“ auf deinem Handy."
+  },
+  "Mark Telegram messages as read when opening a chat.": {
+    "Mark Telegram messages as read when opening a chat.": "Telegram-Nachrichten beim Öffnen eines Chats als gelesen markieren."
+  },
+  "No chats yet. Link an account to get started.": {
+    "No chats yet. Link an account to get started.": "Noch keine Chats. Verbinde zuerst ein Konto."
+  },
+  "Open media": {
+    "Open media": "Medien öffnen"
+  },
+  "QR code expired. Link Telegram again.": {
+    "QR code expired. Link Telegram again.": "QR-Code abgelaufen. Verbinde Telegram erneut."
+  },
+  "Scan the QR code in Telegram → Settings → Devices.": {
+    "Scan the QR code in Telegram → Settings → Devices.": "Scanne den QR-Code in Telegram → Einstellungen → Geräte."
+  },
+  "Search chats": {
+    "Search chats": "Chats durchsuchen"
+  },
+  "Send attachment": {
+    "Send attachment": "Anhang senden"
+  },
+  "Show sample conversations and disconnect real services. Sending is disabled.": {
+    "Show sample conversations and disconnect real services. Sending is disabled.": "Beispielchats anzeigen und echte Dienste trennen. Der Versand ist deaktiviert."
+  },
+  "Sign in": {
+    "Sign in": "Anmelden"
+  },
+  "Telegram": {
+    "Telegram": "Telegram"
+  },
+  "Telegram password": {
+    "Telegram password": "Telegram-Passwort"
+  },
+  "Telegram read receipts": {
+    "Telegram read receipts": "Telegram-Lesebestätigungen"
+  },
+  "The chat service stopped. Reload DankChat to reconnect.": {
+    "The chat service stopped. Reload DankChat to reconnect.": "Der Chatdienst wurde beendet. Lade DankChat neu, um die Verbindung wiederherzustellen."
+  },
+  "The selected chat changed. Choose the attachment again.": {
+    "The selected chat changed. Choose the attachment again.": "Der ausgewählte Chat hat sich geändert. Wähle den Anhang erneut."
+  },
+  "WhatsApp": {
+    "WhatsApp": "WhatsApp"
+  },
+  "Write a message": {
+    "Write a message": "Nachricht schreiben"
+  },
+  "Your conversations": {
+    "Your conversations": "Deine Unterhaltungen"
+  },
+  "Open in window": {
+    "Open in window": "Im Fenster öffnen"
+  },
+  "Reply": {
+    "Reply": "Antworten"
+  },
+  "Copy": {
+    "Copy": "Kopieren"
+  },
+  "Cut": {
+    "Cut": "Ausschneiden"
+  },
+  "Paste": {
+    "Paste": "Einfügen"
+  },
+  "Select all": {
+    "Select all": "Alles auswählen"
+  },
+  "Cancel": {
+    "Cancel": "Abbrechen"
+  },
+  "Send": {
+    "Send": "Senden"
+  }
+}

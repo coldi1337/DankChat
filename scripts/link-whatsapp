@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+umask 077
+state_home=${XDG_STATE_HOME:-"$HOME/.local/state"}
+case "$state_home" in /*) ;; *) state_home="$HOME/.local/state" ;; esac
+store_dir="$state_home/dankchat/whatsapp/store"
+wacli_bin="$HOME/.local/bin/wacli"
+if [ ! -x "$wacli_bin" ]; then
+    printf '%s\n' 'Install wacli 0.17.1 first. See the DankChat README.'
+    read -r answer
+    exit 1
+fi
+if [ "$("$wacli_bin" --version)" != "wacli 0.17.1" ]; then
+    printf '%s\n' 'DankChat requires exactly wacli 0.17.1.'
+    read -r answer
+    exit 1
+fi
+mkdir -p "$store_dir"
+printf '%s\n' 'DankChat: link WhatsApp using Linked devices on your phone.'
+"$wacli_bin" --store "$store_dir" auth
+printf '%s\n' 'Account linking finished. Return to DankChat.'
+read -r answer

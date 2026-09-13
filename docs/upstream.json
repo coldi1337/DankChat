@@ -1,0 +1,14 @@
+[
+  {
+    "project": "OmarGram",
+    "repository": "https://github.com/JoeJoeflyn/omargram",
+    "commit": "97767076d6747153d085ae0e22dc7d70396eba5d",
+    "license": "MIT"
+  },
+  {
+    "project": "OmaWhatsApp",
+    "repository": "https://github.com/MoizIbnYousaf/Omarchy-Whatsapp",
+    "commit": "7ee1540f01d4f7fb698d683577fecd57063a9204",
+    "license": "MIT"
+  }
+]
