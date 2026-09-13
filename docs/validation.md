@@ -208,3 +208,8 @@ The project Python suite now contains 31 passing tests. The registry entry is
 limited to the tested Arch/Hyprland combination and does not claim central i18n
 approval. Submission is a draft while the documented stability/acceptance work
 remains open.
+
+Registry draft submitted: https://github.com/AvengeMedia/dms-plugin-registry/pull/884.
+DankChat's repository is now public. The registry schema validator and changed-entry
+link/manifest validator both passed against the public repository and preview URL.
+This records submission, not maintainer approval or catalog availability.

@@ -7,7 +7,7 @@ DMS colors and widgets. No Electron runtime or embedded browser.
 
 ![DankChat showing synthetic Telegram and WhatsApp conversations](docs/preview.png)
 
-**Development version · DMS registry submission in preparation.** Both accounts have
+**Development version · [DMS registry draft PR #884](https://github.com/AvengeMedia/dms-plugin-registry/pull/884).** Both accounts have
 been linked in the development environment, and the automated checks pass.
 Earlier whole-shell crashes remain under investigation; broader real-account
 and compositor testing is still required. See [Validation](#validation).
@@ -148,8 +148,8 @@ disabling WhatsApp or DankChat stops WhatsApp sync.
 
 ### Registry installation
 
-The registry submission is a draft; DankChat is not yet available in the public
-plugin catalog. After approval, install it through the DMS plugin browser. The
+The [registry submission](https://github.com/AvengeMedia/dms-plugin-registry/pull/884)
+is a draft; DankChat is not yet available in the public plugin catalog. After approval, install it through the DMS plugin browser. The
 registry downloads the plugin source; it does not install wacli, the Python
 virtualenv or the WhatsApp user unit. Open the downloaded plugin directory and
 run `sh scripts/setup-telegram` followed by `python3 scripts/install-local` before
