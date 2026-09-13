@@ -358,7 +358,7 @@ class TelegramBackend:
                                 media_type = "document"
                                 if not last_msg_text:
                                     last_msg_text = "📄 Document"
-                    
+
                     dt = d.message.date
                     if dt:
                         last_msg_date = dt.strftime("%Y-%m-%d")
@@ -532,7 +532,7 @@ class TelegramBackend:
             if topic_id:
                 kwargs["reply_to"] = int(topic_id)
             messages = await self.client.get_messages(entity, **kwargs)
-            
+
             read_outbox_max_id = 0
             chat_title = get_display_name(entity) or getattr(entity, "title", "User")
             chat_avatar = self.cached_avatars.get(cid, "")
@@ -604,11 +604,11 @@ class TelegramBackend:
                                     h = getattr(a, "h", 0) or 0
                                 elif hasattr(a, "file_name") and a.file_name:
                                     file_name = a.file_name
-                            
+
                             mins = int(duration) // 60
                             secs = int(duration) % 60
                             fmt_dur = f"{mins:02d}:{secs:02d}"
-                            
+
                             size_bytes = getattr(doc, "size", 0) or 0
                             if size_bytes >= 1024 * 1024:
                                 fmt_size = f"{size_bytes / (1024 * 1024):.1f} MB"
@@ -616,17 +616,17 @@ class TelegramBackend:
                                 fmt_size = f"{size_bytes / 1024:.0f} KB"
                             else:
                                 fmt_size = f"{size_bytes} B"
-                            
+
                             video_thumb_f = os.path.join(MEDIA_DIR, f"thumb_video_{m.id}_{cid}.jpg")
                             if os.path.exists(video_thumb_f):
                                 media_thumb = video_thumb_f
                             else:
                                 asyncio.create_task(self.download_media_bg(m.media, video_thumb_f, thumb=-1))
-                            
+
                             video_f = os.path.join(MEDIA_DIR, f"video_{m.id}_{cid}.mp4")
                             if os.path.exists(video_f) and os.path.getsize(video_f) > 0:
                                 media_path = video_f
-                            
+
                             media_info = {
                                 "duration": duration,
                                 "formatted_duration": fmt_dur,
@@ -746,7 +746,7 @@ class TelegramBackend:
                     "reply_to_sender": reply_to_sender,
                     "reply_to_text": reply_to_text
                 })
-            
+
             if not hasattr(self, 'chat_messages_cache'):
                 self.chat_messages_cache = {}
             self.chat_messages_cache[cid] = result
@@ -824,7 +824,7 @@ class TelegramBackend:
 
     async def execute_command(self, cmd_dict):
         action = cmd_dict.get("action", "")
-        
+
         if action == "status":
             is_auth = await self.client.is_user_authorized()
             user_info = None
