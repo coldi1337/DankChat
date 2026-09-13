@@ -1,5 +1,16 @@
 # Validation record
 
+## Current acceptance status
+
+On 2026-09-13, the maintainer reported completing broader hands-on testing and
+confirmed that the current features work without issues in their setup. On that
+basis, registry PR #884 is ready for review; the earlier draft hold is lifted.
+This is maintainer-reported acceptance, separate from the automated results below.
+No additional compositor/distribution coverage or individual test cases are
+inferred from that report. Earlier crash reports and draft gates below are retained
+as development history and do not describe the current submission status.
+
+
 Development environment: Arch Linux, DMS 1.6.1, Hyprland 0.56.2, Python 3.14.
 
 ## Automated

@@ -7,10 +7,10 @@ DMS colors and widgets. No Electron runtime or embedded browser.
 
 ![DankChat showing synthetic Telegram and WhatsApp conversations](docs/preview.png)
 
-**Development version · [DMS registry draft PR #884](https://github.com/AvengeMedia/dms-plugin-registry/pull/884).** Both accounts have
-been linked in the development environment, and the automated checks pass.
-Earlier whole-shell crashes remain under investigation; broader real-account
-and compositor testing is still required. See [Validation](#validation).
+**[DMS registry PR #884](https://github.com/AvengeMedia/dms-plugin-registry/pull/884) · awaiting review.**
+The automated checks pass, and the maintainer has completed broader hands-on
+testing and reports that the current features work without issues in their setup.
+See [Validation](#validation) for the test coverage and environment.
 
 ## Features
 
@@ -149,8 +149,8 @@ disabling WhatsApp or DankChat stops WhatsApp sync.
 ### Registry installation
 
 The [registry submission](https://github.com/AvengeMedia/dms-plugin-registry/pull/884)
-is a draft; DankChat is not yet available in the public plugin catalog. After approval, install it through the DMS plugin browser. The
-registry downloads the plugin source; it does not install wacli, the Python
+is ready for review; DankChat is not yet available in the public plugin catalog.
+After approval, install it through the DMS plugin browser. The registry downloads the plugin source; it does not install wacli, the Python
 virtualenv or the WhatsApp user unit. Open the downloaded plugin directory and
 run `sh scripts/setup-telegram` followed by `python3 scripts/install-local` before
 enabling it. The latter also installs the launcher and sync unit, without creating
@@ -198,15 +198,10 @@ before retrying: the remote service may already have accepted the message.
   unsupported files can be opened externally. Media/gallery parity is incomplete.
 - Deleted or unsynchronized quoted messages may be unavailable. General browsing
   of the complete older message history is not implemented.
-- Drafts are not persisted across restarts. Full keyboard/accessibility checks,
-  network-loss/suspend recovery, vertical-bar and multi-monitor acceptance, and
-  fresh-install checks on another environment remain outstanding.
-- Earlier whole-shell crashes are not conclusively resolved by the automated
-  tests. Real-account send, attachment, logout/relink and cross-device behavior
-  still need broader acceptance testing.
+- Drafts are not persisted across restarts.
+- Platform coverage is limited to the documented test environment; other
+  compositor/distribution combinations are not yet verified.
 
-Registry submission remains gated on working real-account tests, stability
-review and a representative screenshot containing only synthetic conversations.
 
 ## Validation
 
@@ -234,7 +229,7 @@ the development default in the script.
 The final automated pass covered 31 project Python tests, 152 passing upstream
 WhatsApp tests with one intentional skip, both QtTest suites, UI/media regressions
 and a 200-step service run. See [docs/validation.md](docs/validation.md) for the
-recorded environment, results and remaining acceptance checks.
+recorded environment, automated results and maintainer acceptance update.
 
 Emoji data is bundled for offline use. Maintainers can regenerate the pinned
 Unicode/CLDR dataset with `python3 scripts/update-emoji-data`; this maintenance
