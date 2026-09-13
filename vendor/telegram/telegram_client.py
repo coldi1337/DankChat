@@ -392,6 +392,7 @@ class TelegramBackend:
                     "is_channel": is_channel,
                     "is_forum": is_forum,
                     "unread_count": unread,
+                    "pinned": bool(getattr(d.dialog, "pinned", False)),
                     "read_outbox_max_id": read_outbox_max_id,
                     "avatar": avatar_path,
                     "initials": get_initials(title),

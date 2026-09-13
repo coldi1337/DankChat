@@ -41,6 +41,10 @@ class ModelTests(unittest.TestCase):
         row = chat("whatsapp", {"jid": "synthetic", "account": "one", "unread": 9, "notification_unread": 0})
         self.assertEqual(row["unread"], 0)
 
+    def test_pinned_chat_state_survives_both_adapters(self):
+        self.assertTrue(chat("telegram", {"id": "1", "pinned": True})["pinned"])
+        self.assertTrue(chat("whatsapp", {"jid": "synthetic", "pinned": 1})["pinned"])
+
     def test_message_media_and_reply_are_shared(self):
         tg = message("telegram", {"id": 4, "text": "hello", "out": True, "media_type": "photo", "media_path": "/tmp/demo.png", "reply_to_text": "previous"})
         wa = message("whatsapp", {"id": "4", "text": "hello", "from_me": True, "media_type": "photo", "local_path": "/tmp/demo.png", "quoted_text": "previous"})
@@ -60,7 +64,7 @@ class RoutingTests(unittest.IsolatedAsyncioTestCase):
         self.provider.call.assert_not_called()
 
     async def test_wrong_provider_rejected_for_read_and_write(self):
-        for action in ("messages", "send", "file", "read"):
+        for action in ("messages", "send", "file", "read", "pin", "download"):
             with self.assertRaises(ProviderError):
                 await self.bridge.dispatch({"provider": "telegram", "action": action,
                     "chat": {"provider": "whatsapp", "id": "synthetic"}, "text": "hello"})

@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+"""Run the real QML view with synthetic data, private settings and a private bus."""
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import sys
+import signal
+import shutil
+import time
+
+repo = Path(__file__).resolve().parents[1]
+dms = Path(os.environ.get('DANKCHAT_DMS_SOURCE', '/run/user/1000/danklinux-shell/d83248ba9119b48a'))
+with tempfile.TemporaryDirectory(prefix='dankchat-ui-') as directory:
+    base = Path(directory)
+    for child in dms.iterdir():
+        if child.is_dir():
+            shutil.copytree(child, base / child.name)
+    (base / 'shell.qml').write_text((repo / ('tests/service_shell.qml' if '--service' in sys.argv else 'tests/ui_shell.qml')).read_text())
+    plugin = base / 'testplugin'; plugin.mkdir()
+    for source in list(repo.glob('*.qml')) + [repo / 'linkify.js']:
+        shutil.copy2(source, plugin / source.name)
+    (plugin / 'scripts').mkdir()
+    shutil.copy2(repo / 'tests/fake_bridge.py', plugin / 'fake_bridge.py')
+    (plugin / 'scripts/run-bridge').write_text('exec python3 "$(dirname "$0")/../fake_bridge.py"\n')
+    env = os.environ.copy()
+    artifacts = Path('/tmp/dankchat-ui-artifacts'); artifacts.mkdir(exist_ok=True)
+    env['DANKCHAT_TEST_ARTIFACTS'] = str(artifacts)
+    env['DANKCHAT_TEST_TRANSLATIONS'] = (repo / 'translations/de.json').read_text()
+    for name in ('CONFIG', 'CACHE', 'STATE', 'DATA'):
+        path = base / name.lower(); path.mkdir()
+        env['XDG_' + name + '_HOME'] = str(path)
+    runtime = base / 'runtime'; runtime.mkdir(mode=0o700)
+    display = env.get('WAYLAND_DISPLAY', '')
+    if display and not display.startswith('/'):
+        env['WAYLAND_DISPLAY'] = str(Path(env.get('XDG_RUNTIME_DIR', '/run/user/1000')) / display)
+    env['XDG_RUNTIME_DIR'] = str(runtime)
+    env['NO_AT_BRIDGE'] = '1'
+    env['QT_ACCESSIBILITY'] = '0'
+    env.pop('AT_SPI_BUS_ADDRESS', None)
+    env.update(QT_QPA_PLATFORM=os.environ.get('DANKCHAT_TEST_PLATFORM', 'wayland'), DANKCHAT_TEST_VIEW=(plugin / 'ChatView.qml').as_uri(), DANKCHAT_TEST_SERVICE=(plugin / 'Service.qml').as_uri(), DMS_DISABLE_MATUGEN='1')
+    process = subprocess.Popen(['dbus-run-session', '--', 'qs', '-p', str(base)], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, start_new_session=True)
+    success = False
+    try:
+        time.sleep(2)
+        for step in range(200 if '--service' in sys.argv else 100):
+            response = subprocess.run(['qs', '-p', str(base), 'ipc', 'call', 'test', 'advance'], env=env, capture_output=True, text=True, timeout=3)
+            if response.returncode or 'FAIL' in response.stdout:
+                print('TEST: IPC failed', response.stdout.strip())
+                break
+            if 'PASS' in response.stdout:
+                success = True
+            time.sleep(0.1)
+    finally:
+        os.killpg(process.pid, signal.SIGTERM)
+        output, _ = process.communicate(timeout=5)
+    (Path('/tmp') / 'dankchat-isolated-ui.log').write_text(output)
+    # Do not echo service logs or filesystem lists; report only test diagnostics.
+    for line in output.splitlines():
+        if any(word in line for word in ('TEST: view failed', 'ChatView.qml:', 'MediaPreview.qml:', 'ReferenceError', 'TypeError', 'Unable to assign', 'Binding loop', 'crashed', 'Failed to load configuration')):
+            print(line)
+    ok = success and 'crashed' not in output and 'ReferenceError' not in output and 'TypeError' not in output and 'Unable to assign' not in output
+    print('Isolated UI test:', 'PASS' if ok else 'FAIL')
+    sys.exit(0 if ok else 1)

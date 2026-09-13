@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import qs.Common
 import qs.Services
 import qs.Widgets
@@ -16,14 +17,18 @@ PluginComponent {
     readonly property bool readReceipts: pluginData.telegramReadReceipts ?? false
     property var chats: []
     property var messages: []
+    signal messagesReplacing
     property var selectedChat: null
     property var statuses: ({})
     property var drafts: ({})
     property var replies: ({})
+    property var downloads: ({})
+    property var activePlayer: null
     property string filter: "all"
     property string query: ""
     property string errorText: ""
     property string qrPath: ""
+    property var accountBusy: ({})
     property bool accountsOpen: false
     property bool writing: false
     property bool loadingMessages: false
@@ -61,15 +66,21 @@ PluginComponent {
         if (demo) return;
         ["telegram", "whatsapp"].forEach(provider => {
             if ((provider === "telegram" && !telegramEnabled) || (provider === "whatsapp" && !whatsappEnabled)) return;
+            if (accountBusy[provider]) return;
             sendRequest(provider, "status", {}, result => {
+                if (accountBusy[provider]) return;
                 const states = Object.assign({}, statuses); states[provider] = result; statuses = states;
                 if (provider === "telegram") qrPath = result.qrPath || "";
-                if (!result.authorized) return;
+                if (!result.authorized) {
+                    chats = chats.filter(chat => chat.provider !== provider);
+                    if (selectedChat?.provider === provider) { selectedChat = null; messages = []; }
+                    return;
+                }
                 if (provider === "telegram") qrPath = "";
                 sendRequest(provider, "chats", {}, result => {
                     if (!result.ok) { errorText = result.error || ""; return; }
                     chats = chats.filter(chat => chat.provider !== provider).concat(result.chats || [])
-                        .sort((a, b) => b.timestamp - a.timestamp || a.key.localeCompare(b.key));
+                        .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.timestamp - a.timestamp || a.key.localeCompare(b.key));
                 });
             });
         });
@@ -93,7 +104,7 @@ PluginComponent {
             if (selectedChat?.key !== chat.key) { loadMessages(); return; }
             if (result.ok) {
                 const incoming = result.messages || [];
-                if (JSON.stringify(incoming) !== JSON.stringify(messages)) messages = incoming;
+                if (JSON.stringify(incoming) !== JSON.stringify(messages)) { messagesReplacing(); messages = incoming; }
             } else errorText = result.error || "";
         })) loadingMessages = false;
     }
@@ -123,19 +134,55 @@ PluginComponent {
             if (selectedChat?.key === chat.key) loadMessages();
         })) writing = false;
     }
-    function loginTelegram() {
+    function accountAction(provider, action) {
+        if (demo || accountBusy[provider]) return;
         errorText = "";
-        sendRequest("telegram", "login", {}, result => {
-            if (result.ok) { qrPath = result.qrPath || ""; refresh(); }
-            else errorText = result.error;
-        });
+        const busy = Object.assign({}, accountBusy); busy[provider] = true; accountBusy = busy;
+        const finish = () => { const busy = Object.assign({}, accountBusy); delete busy[provider]; accountBusy = busy; };
+        if (!sendRequest(provider, action, {}, result => {
+            finish();
+            if (!result.ok) { errorText = result.error; refresh(); return; }
+            if (action === "logout") {
+                const keys = chats.filter(chat => chat.provider === provider).map(chat => chat.key);
+                const d = Object.assign({}, drafts), r = Object.assign({}, replies);
+                keys.forEach(key => { delete d[key]; delete r[key]; }); drafts = d; replies = r;
+                chats = chats.filter(chat => chat.provider !== provider);
+                if (selectedChat?.provider === provider) { selectedChat = null; messages = []; }
+                const states = Object.assign({}, statuses); states[provider] = {authorized: false}; statuses = states;
+            }
+            refresh();
+        })) finish();
     }
+    function loginTelegram() { accountAction("telegram", "login"); }
     function submitPassword(password) {
         sendRequest("telegram", "password", {password: password}, result => {
             if (!result.ok) errorText = result.error;
             else refresh();
         });
     }
+    function downloadMedia(message) {
+        if (!selectedChat || demo) return;
+        const chat = selectedChat;
+        const key = chat.key + ":" + message.id;
+        if (downloads[key]) return;
+        const active = Object.assign({}, downloads); active[key] = true; downloads = active;
+        errorText = "";
+        if (!sendRequest(chat.provider, "download", {chat: chat, messageId: message.id, mediaType: message.mediaType}, result => {
+            const active = Object.assign({}, downloads); delete active[key]; downloads = active;
+            if (!result.ok) { errorText = result.error; return; }
+            if (selectedChat?.key === chat.key) loadMessages();
+        })) {
+            const active = Object.assign({}, downloads); delete active[key]; downloads = active;
+        }
+    }
+    function togglePin(chat) {
+        if (demo) return;
+        sendRequest(chat.provider, "pin", {chat: chat, pinned: !chat.pinned}, result => {
+            if (!result.ok) errorText = result.error;
+            else refresh();
+        });
+    }
+    function closeDropdown() { popout.close(); }
     function openWindow() {
         if (IdleService.isShellLocked) return;
         popout.close(); app.visible = true; refresh();
@@ -199,11 +246,14 @@ PluginComponent {
         }
     }
     Timer { interval: root.accountsOpen ? 2000 : root.surfaceOpen ? 5000 : 30000; running: !root.demo; repeat: true; onTriggered: root.refresh() }
-    DankPopout {
+    DankPopoutStandalone {
         id: popout
         popupWidth: 760
         popupHeight: 590
         contentHandlesKeys: true
+        backgroundInteractive: true
+        onBackgroundClicked: close()
+        customKeyboardFocus: WlrKeyboardFocus.OnDemand
         content: Component {
             Loader {
                 id: dropdownView
@@ -248,6 +298,11 @@ PluginComponent {
             return "Capturing demo view to ~/.cache/dankchat-preview.png";
         }
         function demo(enabled: bool): void { root.pluginService?.savePluginData("dankChat", "demoMode", enabled); }
+        function previewAttachmentPicker(opened: bool): void { if (windowView.item) windowView.item.previewAttachmentPicker(opened); }
+        function viewStatus(): string {
+            const component = Qt.createComponent(Qt.resolvedUrl("ChatView.qml") + "?revision=" + root.viewRevision);
+            return JSON.stringify({status: windowView.status, width: windowView.width, height: windowView.height, loaded: !!windowView.item, error: component.errorString(), mediaErrors: ["MediaPreview.qml", "MediaPlayerView.qml"].map(file => Qt.createComponent(Qt.resolvedUrl(file) + "?revision=" + root.viewRevision).errorString())});
+        }
         function status(): string { return JSON.stringify({demo: root.demo, window: app.visible, dropdown: popout.shouldBeVisible, bridge: bridge.running, pending: Object.keys(root.pending).length, telegram: !!root.statuses.telegram?.authorized, whatsapp: !!root.statuses.whatsapp?.authorized, telegramAuthState: root.statuses.telegram?.authState || ""}); }
     }
 }

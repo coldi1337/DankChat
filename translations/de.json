@@ -112,5 +112,53 @@
   },
   "Send": {
     "Send": "Senden"
+  },
+  "Playback unavailable": {
+    "Playback unavailable": "Wiedergabe nicht verfügbar"
+  },
+  "Preview unavailable. Open this file externally.": {
+    "Preview unavailable. Open this file externally.": "Vorschau nicht verfügbar. Öffne die Datei extern."
+  },
+  "Loading media…": {
+    "Loading media…": "Medien werden geladen…"
+  },
+  "Load media": {
+    "Load media": "Medien laden"
+  },
+  "Unpin chat": {
+    "Unpin chat": "Chat lösen"
+  },
+  "Pin chat": {
+    "Pin chat": "Chat anpinnen"
+  },
+  "Disconnect account": {
+    "Disconnect account": "Konto trennen"
+  },
+  "Scan the QR code in WhatsApp → Linked devices → Link a device.": {
+    "Scan the QR code in WhatsApp → Linked devices → Link a device.": "Scanne den QR-Code in WhatsApp → Verknüpfte Geräte → Gerät hinzufügen."
+  },
+  "Waiting for scan…": {
+    "Waiting for scan…": "Warte auf den Scan …"
+  },
+  "Linking failed or expired. Please try again.": {
+    "Linking failed or expired. Please try again.": "Verknüpfung fehlgeschlagen oder abgelaufen. Bitte erneut versuchen."
+  },
+  "Sign out this DankChat device and remove its cached chats, media and drafts? Messages on your phone stay intact. Linking again requires a new QR code.": {
+    "Sign out this DankChat device and remove its cached chats, media and drafts? Messages on your phone stay intact. Linking again requires a new QR code.": "Dieses DankChat-Gerät abmelden und seine zwischengespeicherten Chats, Medien und Entwürfe entfernen? Nachrichten auf deinem Handy bleiben erhalten. Zum erneuten Verbinden ist ein neuer QR-Code nötig."
+  },
+  "Jump to latest message": {
+    "Jump to latest message": "Zur neuesten Nachricht"
+  },
+  "Confirmed by at least one group participant": {
+    "Confirmed by at least one group participant": "Von mindestens einem Gruppenmitglied bestätigt"
+  },
+  "Read": {
+    "Read": "Gelesen"
+  },
+  "Delivered": {
+    "Delivered": "Zugestellt"
+  },
+  "Sent": {
+    "Sent": "Gesendet"
   }
 }

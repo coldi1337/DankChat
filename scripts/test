@@ -6,7 +6,10 @@ python3 -B -m unittest discover -s tests -p 'test_*.py'
 WHATSAPP_SCRIPT="$project_dir/vendor/whatsapp/bin/whatsapp_client.py" python3 -B -m unittest discover -s vendor/whatsapp/tests -p 'test_*.py'
 qmlformat_bin=$(command -v qmlformat || true)
 if [ -z "$qmlformat_bin" ]; then qmlformat_bin=/usr/lib/qt6/bin/qmlformat; fi
-for component in BarWidget.qml Service.qml Settings.qml ChatView.qml; do
+for component in BarWidget.qml Service.qml Settings.qml ChatView.qml MediaPreview.qml MediaPlayerView.qml; do
     "$qmlformat_bin" -n "$component" >/dev/null
 done
+qmltest_bin=$(command -v qmltestrunner || true)
+if [ -z "$qmltest_bin" ]; then qmltest_bin=/usr/lib/qt6/bin/qmltestrunner; fi
+QT_QPA_PLATFORM=offscreen "$qmltest_bin" -input tests/tst_links.qml
 "$project_dir/.venv/bin/python3" -c 'import json,jsonschema;jsonschema.validate(json.load(open("plugin.json")),json.load(open("tests/plugin-schema.json")))'

@@ -31,6 +31,7 @@ def chat(provider, raw):
         "timestamp": timestamp(last.get("timestamp", last.get("date", "")) if telegram else raw.get("timestamp", 0)),
         "unread": max(0, int(unread or 0)), "avatar": raw.get("avatar", ""),
         "forum": bool(raw.get("is_forum", False)),
+        "pinned": bool(raw.get("pinned", False)),
         "group": bool(raw.get("is_group", False) if telegram else raw.get("kind") == "group"),
     }
 
@@ -46,8 +47,13 @@ def message(provider, raw):
         "time": str(raw.get("time", "")),
         "mediaType": str(raw.get("media_type", "")),
         "mediaPath": str(raw.get("media_path" if telegram else "local_path", "")),
+        "mediaThumb": str(raw.get("media_thumb", "")),
+        "mimeType": str(raw.get("mime_type", "")),
+        "filename": str(raw.get("filename", "") or (raw.get("media_info") or {}).get("file_name", "")),
         "replyText": str(raw.get("reply_to_text" if telegram else "quoted_text", "")),
         "edited": bool(raw.get("is_edited" if telegram else "edited", False)),
+        "deliveryPartial": bool(raw.get("delivery_partial", False)),
+        "deliveryStatus": str(raw.get("status", "sent" if raw.get("out") else "") if telegram else raw.get("delivery_status", "sent" if raw.get("from_me") else "")),
     }
 
 

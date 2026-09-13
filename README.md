@@ -14,11 +14,15 @@ shared client, not full feature parity with both upstream applications.
 - A composite DMS plugin with one background owner and widgets on multiple bars.
 - One chat list, with All / Telegram / WhatsApp filters and local chat search.
 - Text history, text sending, replies, one-file attachment sending, and local
-  image display/external media opening through a common interface.
+  on-demand media downloads, inline images/stickers, and video/audio playback.
+- Clickable web links and distinct incoming/outgoing message bubbles.
+- Pinned chats first, with Pin/Unpin in the chat context menu.
+- A nonmodal dropdown that allows interacting with other windows.
 - Chat selection and separate in-memory drafts survive switching between the
   dropdown and app window. Drafts do not yet survive a shell restart.
 - Telegram QR login, including the additional account password when required.
-- WhatsApp terminal QR linking and an isolated systemd user sync service.
+- WhatsApp QR linking inside the account dialog and an isolated systemd user sync service.
+- Explicit sign-out for either account, with confirmation and local cache cleanup.
 - Telegram read receipts off by default; WhatsApp opening acknowledges the
   local badge without sending a receipt.
 - Optional German UI translations and an isolated sample-data mode with
@@ -29,9 +33,11 @@ shared client, not full feature parity with both upstream applications.
 - DMS 1.6.1 or newer, Quickshell, Python 3.10+.
 - Telegram: Telethon, qrcode, Pillow (installed into a project virtualenv).
 - WhatsApp: **wacli 0.17.1** at `~/.local/bin/wacli`, systemd user services.
-- WhatsApp linking: `xdg-terminal-exec`, Ghostty, foot, or kitty.
-- Qt Quick Dialogs for the attachment picker; a desktop media viewer for
-  external opening.
+- Both QR login flows use qrcode and Pillow from the project virtualenv.
+- Qt Quick Dialogs for the non-native attachment picker (GTK/GVFS is bypassed); a desktop media viewer for
+  external opening. Qt Multimedia and image format plugins enable inline media
+  (Arch: `qt6-multimedia-ffmpeg qt6-imageformats`). Animated Telegram vector
+  stickers are not rendered inline; unsupported files can open externally.
 
 Tested development environment: Arch Linux, Hyprland 0.56.2, DMS 1.6.1.
 Other compositor/distribution combinations are not yet verified.
@@ -65,11 +71,14 @@ executable at `~/.local/bin/wacli`.
 
 ## Using DankChat
 
-- Left-click the widget: dropdown.
-- Right-click the widget, or launch **DankChat**: separate app window.
+- Left-click the widget: toggle the compact dropdown for quick chats. A click outside closes it; the normal app window stays open until closed.
+- Right-click the widget: open the same conversation in a normal, resizable, tiling-capable app window. The desktop launcher opens this window too.
 - Open-in-new button: expand the current dropdown conversation into the app.
 - Enter: send; Shift+Enter: newline.
-- Accounts button: link Telegram or WhatsApp. Complete linking on your phone.
+- Images: click to enlarge, wheel or +/− to zoom, drag to pan, double-click to reset/toggle zoom.
+- Videos: expand button opens a large player inside the current window; playback continues.
+- Accounts button: link Telegram or WhatsApp directly using the displayed QR code. Complete linking on your phone; no terminal is needed.
+- Connected accounts offer **Disconnect account**. After confirmation, DankChat revokes its session and removes local cached chats, media and drafts. Phone/cloud messages remain intact; reconnecting needs a fresh QR scan. A failed remote logout preserves the local session. Disabling a provider in settings only pauses it and preserves the session.
 
 IPC entry points:
 
@@ -106,17 +115,28 @@ A custom `api_id` / `api_hash` can be supplied in
 No automatic resend follows a failed or timed-out send. Check the conversation
 before retrying, because the remote service may already have accepted it.
 
+WhatsApp delivery/read indicators use signed live receipt events received only on
+loopback (`127.0.0.1`), with no message bodies and no external forwarding. Old
+messages without recorded receipts show only the sent state. A group receipt
+means at least one participant has confirmed it; the tooltip states this.
+Telegram uses its server-provided sent/read status. Receiving these updates does
+not enable outgoing read receipts.
+
+The attachment picker explicitly avoids the native GTK dialog after a local
+GTK/GVFS crash. Closing it cancels selection; choosing a file still requires the
+separate Send confirmation.
+
 ## Current limits / release gate
 
 The following are not yet finished or verified:
 
 - Real-account login, live incoming messages, sending and attachment acceptance
   for both services; reconnect after network loss and suspend.
-- Telegram topic navigation, editing, forwarding, pinning and reactions in the
+- Telegram topic navigation, editing, forwarding, message pinning and reactions in the
   shared UI.
-- WhatsApp voice recording, group mentions, richer media playback and multiple
+- WhatsApp voice recording, group mentions and multiple
   account setup in the shared UI.
-- On-demand media download/gallery parity and persistent drafts.
+- Media format/gallery parity and persistent drafts.
 - Full keyboard/accessibility checks, vertical bars, additional monitor layouts,
   and a clean installation test on another checkout.
 
@@ -150,6 +170,6 @@ MIT. Built on [OmarGram](https://github.com/JoeJoeflyn/omargram) and
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
 [docs/upstream.json](docs/upstream.json).
 
-The DMS integration was developed with substantial AI assistance. Publication
-and registry review must disclose this and must not imply that unperformed
-human or real-account tests have passed.
+The DMS integration was developed with AI assistance. See the
+[validation record](docs/validation.md) for completed checks and remaining
+acceptance tests.

@@ -11,10 +11,13 @@ import os
 from pathlib import Path
 import re
 import signal
+import shutil
 import sys
 
 from model import chat, messages
 from qr_login import QrLogin
+from whatsapp_login import WhatsAppLogin
+from receipts import apply as apply_receipts
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_REQUEST = 65536
@@ -50,6 +53,7 @@ class Telegram:
         self.qr_task = None
         self.qr = None
         self.auth_state = "disconnected"
+        self.downloads = {}
 
     async def connect(self):
         if self.daemon:
@@ -76,6 +80,7 @@ class Telegram:
         @daemon.client.on(telethon.events.NewMessage)
         @daemon.client.on(telethon.events.MessageEdited)
         @daemon.client.on(telethon.events.MessageDeleted)
+        @daemon.client.on(telethon.events.MessageRead)
         async def invalidate(event):
             daemon.messages_cache.clear()
 
@@ -90,6 +95,25 @@ class Telegram:
     async def call(self, action, data):
         await self.connect()
         client = self.daemon.client
+        if action == "logout":
+            if self.qr_task:
+                self.qr_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self.qr_task
+            if not await client.log_out():
+                raise ProviderError("Telegram sign-out failed. Your local session was preserved.")
+            self.daemon = None
+            self.qr = None
+            self.qr_task = None
+            self.auth_state = "disconnected"
+            self.downloads.clear()
+            shutil.rmtree(CACHE / "telegram", ignore_errors=True)
+            return {"ok": True}
+        if action == "cancel_login":
+            await self.close()
+            self.qr = None
+            self.auth_state = "disconnected"
+            return {"ok": True}
         if action == "login":
             if await client.is_user_authorized():
                 return {"ok": True, "authorized": True}
@@ -115,14 +139,33 @@ class Telegram:
             result = await self.daemon.execute_command({"action": "dialogs", "limit": 200})
             return {"ok": True, "chats": [chat("telegram", c) for c in result["chats"]]}
         target = data.get("chat", {})
-        if action in {"messages", "send", "read", "file"}:
+        if action in {"messages", "send", "read", "file", "download", "pin"}:
             # Resolve only exact dialogs returned by this account, never a guessed recipient.
             ident = str(target.get("id", ""))
             if not any(str(c["id"]) == ident for c in self.daemon.dialogs_cache):
                 raise ProviderError("Select an existing Telegram chat first.")
+            if action == "pin":
+                from telethon.tl import functions, types
+                peer = types.InputDialogPeer(await client.get_input_entity(int(ident)))
+                await client(functions.messages.ToggleDialogPinRequest(peer=peer, pinned=data["pinned"]))
+                return {"ok": True}
             if action == "messages":
                 result = await self.daemon.execute_command({"action": "messages", "chat_id": ident, "limit": 100})
+                for row in result["messages"]:
+                    path = self.downloads.get((ident, str(row["id"])))
+                    if path and Path(path).is_file():
+                        row["media_path"] = path
                 return {"ok": True, "messages": messages("telegram", result["messages"])}
+            if action == "download":
+                media_type = data.get("mediaType", "document")
+                if media_type not in {"video", "photo", "image", "sticker", "document", "audio", "voice", "gif"}:
+                    raise ProviderError("This message has no downloadable attachment.")
+                result = await self.daemon.execute_command({"action": "download_media", "chat_id": ident,
+                    "message_id": data["messageId"], "media_type": media_type})
+                if not result.get("success"):
+                    raise ProviderError("The attachment could not be downloaded.")
+                self.downloads[(ident, str(data["messageId"]))] = result["file_path"]
+                return {"ok": True, "path": result["file_path"]}
             if action == "send":
                 result = await self.daemon.execute_command({"action": "send", "chat_id": ident, "text": data["text"], "reply_to": data.get("replyId") or None})
             elif action == "file":
@@ -154,9 +197,10 @@ class WhatsApp:
         self.helper_state = STATE / "whatsapp/helper"
         self.binary = Path.home() / ".local/bin/wacli"
         self.version_checked = False
+        self.login = None
 
-    async def sync(self, start):
-        process = await asyncio.create_subprocess_exec("systemctl", "--user", "--no-block", "start" if start else "stop",
+    async def sync(self, start, wait=False):
+        process = await asyncio.create_subprocess_exec("systemctl", "--user", *([] if wait else ["--no-block"]), "start" if start else "stop",
             "dankchat-whatsapp.service", stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
         await process.wait()
 
@@ -176,14 +220,61 @@ class WhatsApp:
             if output.decode(errors="replace").strip() != "wacli 0.17.1":
                 raise ProviderError("DankChat requires wacli 0.17.1.")
             self.version_checked = True
+        if self.login and self.login.task and not self.login.task.done():
+            return {"ok": True, "authorized": self.login.state == "authorized", "installed": True,
+                    "authState": self.login.state, "qrPath": self.login.qr.path, "linking": True}
         if not (self.store / "session.db").exists():
-            return {"ok": True, "authorized": False, "installed": True}
+            return {"ok": True, "authorized": False, "installed": True,
+                    "authState": self.login.state if self.login else "disconnected"}
         result = await asyncio.to_thread(self.backend().status)
         if result.get("authenticated") and result.get("online") and not result.get("sync_active"):
             await self.sync(True)
-        return {"ok": result.get("ok", False), "authorized": result.get("authenticated", False), "installed": True}
+        return {"ok": result.get("ok", False), "authorized": result.get("authenticated", False), "installed": True,
+                "authState": "authorized" if result.get("authenticated") else self.login.state if self.login else "disconnected"}
 
     async def call(self, action, data):
+        if action == "cancel_login":
+            if self.login:
+                await self.login.cancel()
+                self.login = None
+            return {"ok": True}
+        if action == "login":
+            state = await self.status()
+            if state.get("authorized") or state.get("linking"):
+                return state
+            if not state.get("installed"):
+                raise ProviderError("Install wacli 0.17.1 first.")
+            try:
+                import qrcode
+            except ImportError:
+                raise ProviderError("QR dependencies are missing. Run scripts/setup-telegram.")
+            await self.sync(False, wait=True)
+            self.store.mkdir(parents=True, exist_ok=True, mode=0o700)
+            directory = CACHE / "whatsapp-login"
+            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+            self.login = WhatsAppLogin(self.binary, self.store, directory, qrcode.make)
+            self.login.task = asyncio.create_task(self.login.run())
+            return {"ok": True}
+        if action == "logout":
+            if self.login:
+                await self.login.cancel()
+                self.login = None
+            await self.sync(False, wait=True)
+            process = await asyncio.create_subprocess_exec(str(self.binary), "--store", str(self.store),
+                "--timeout", "45s", "auth", "logout", stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+            try:
+                code = await asyncio.wait_for(process.wait(), 55)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                with contextlib.suppress(ProcessLookupError):
+                    process.kill()
+                await process.wait()
+                raise
+            if code:
+                raise ProviderError("WhatsApp sign-out failed. Your local session was preserved; check your connection.")
+            shutil.rmtree(self.store)
+            if self.helper_state.exists():
+                shutil.rmtree(self.helper_state)
+            return {"ok": True}
         target = data.get("chat", {})
         backend = self.backend(target.get("account", ""))
         ident = str(target.get("id", ""))
@@ -192,7 +283,14 @@ class WhatsApp:
             return {"ok": True, "chats": [chat("whatsapp", c) for c in result["chats"]]}
         if action == "messages":
             result = await asyncio.to_thread(backend.messages, ident)
+            await asyncio.to_thread(apply_receipts, self.helper_state / "receipts.sqlite", ident, result["messages"])
             return {"ok": True, "messages": messages("whatsapp", result["messages"])}
+        if action == "download":
+            await asyncio.to_thread(backend.download_media, ident, data["messageId"])
+            return {"ok": True}
+        if action == "pin":
+            await asyncio.to_thread(backend.chat_action, ident, "pin" if data["pinned"] else "unpin")
+            return {"ok": True}
         if action == "send":
             result = await asyncio.to_thread(backend.send, ident, data["text"], data.get("replyId", ""))
         elif action == "file":
@@ -206,6 +304,8 @@ class WhatsApp:
         return {"ok": True}
 
     async def close(self):
+        if self.login:
+            await self.login.cancel()
         await self.sync(False)
 
 
@@ -230,12 +330,14 @@ class Bridge:
         provider = self.providers[name]
         if action == "status":
             return await provider.status()
-        if action not in {"chats", "messages", "send", "file", "read", "acknowledge", "login", "password"}:
+        if action not in {"chats", "messages", "send", "file", "read", "acknowledge", "login", "password", "download", "pin", "logout", "cancel_login"}:
             raise ProviderError("Unsupported action.")
-        if action in {"messages", "send", "file", "read", "acknowledge"}:
+        if action in {"messages", "send", "file", "read", "acknowledge", "download", "pin"}:
             target = request.get("chat")
             if not isinstance(target, dict) or target.get("provider") != name or not target.get("id"):
                 raise ProviderError("The chat does not belong to this service.")
+        if action == "pin" and not isinstance(request.get("pinned"), bool):
+            raise ProviderError("Invalid pin state.")
         if action in {"send", "file"}:
             text = request.get("text", "")
             if not isinstance(text, str) or len(text) > 4096 or (action == "send" and not text.strip()):
@@ -274,7 +376,7 @@ async def main():
     async def respond(request):
         try:
             async with locks.get(request.get("provider", ""), locks[""]):
-                result = await asyncio.wait_for(bridge.dispatch(request), timeout=90)
+                result = await asyncio.wait_for(bridge.dispatch(request), timeout=210 if request.get("action") == "download" else 90)
         except ProviderError as exc:
             result = {"ok": False, "error": str(exc)}
         except Exception:
