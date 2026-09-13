@@ -245,7 +245,7 @@ Item {
                     Layout.fillWidth: true
                     buttonHeight: 34
                     iconName: "mark_chat_unread"
-                    text: I18n.trFor("dankChat", "Unread") + " (" + root.service.unreadChatCount + ")"
+                    text: I18n.trFor("dankChat", "Unread chats") + " (" + root.service.unreadChatCount + ")"
                     backgroundColor: root.service.unreadOnly ? Theme.primary : Theme.surfaceContainerHigh
                     textColor: root.service.unreadOnly ? Theme.primaryText : Theme.surfaceText
                     Accessible.checkable: true
@@ -510,6 +510,27 @@ Item {
                                         onReplyRequested: root.service.setReply(messageRow.modelData)
                                     }
                                 }
+                                Flow {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: childrenRect.height
+                                    visible: (messageRow.modelData.reactions || []).length > 0
+                                    spacing: 4
+                                    Repeater {
+                                        model: messageRow.modelData.reactions || []
+                                        delegate: Controls.ItemDelegate {
+                                            id: reactionChip
+                                            required property var modelData
+                                            objectName: "reactionChip"
+                                            width: implicitWidth; height: 30
+                                            padding: 5
+                                            enabled: !root.service.demo && messageRow.modelData.canReact !== false && !modelData.custom && !root.service.reacting?.[root.service.selectedChat?.key + ":" + messageRow.modelData.id]
+                                            Accessible.name: modelData.emoji + " " + modelData.count + (modelData.chosen ? " " + I18n.trFor("dankChat", "Your reaction") : "")
+                                            background: Rectangle { radius: Theme.cornerRadius; color: reactionChip.modelData.chosen ? Theme.primary : Theme.surfaceContainer; border.color: reactionChip.modelData.chosen ? Theme.primary : Theme.outline }
+                                            contentItem: Label { text: reactionChip.modelData.emoji + " " + reactionChip.modelData.count; color: reactionChip.modelData.chosen ? Theme.primaryText : Theme.surfaceText; elide: Text.ElideNone; wrapMode: Text.NoWrap }
+                                            onClicked: root.service.reactToMessage(messageRow.modelData, modelData.chosen ? "" : modelData.emoji, root.service.selectedChat)
+                                        }
+                                    }
+                                }
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Action {
@@ -546,6 +567,13 @@ Item {
                                         name: ["read", "delivered"].includes(messageRow.modelData.deliveryStatus) ? "done_all" : "check"
                                         size: 16
                                         color: messageRow.modelData.deliveryStatus === "read" ? bubble.readableAccent : bubble.readableSecondary
+                                    }
+                                    Action {
+                                        iconName: "add_reaction"; width: 26; height: 26; iconSize: 16
+                                        tooltipText: I18n.trFor("dankChat", "React with emoji")
+                                        visible: messageRow.modelData.canReact !== false
+                                        enabled: !root.service.demo && !root.service.reacting?.[root.service.selectedChat?.key + ":" + messageRow.modelData.id]
+                                        onClicked: root.openReactionPicker(messageRow.modelData)
                                     }
                                     Action { iconName: "reply"; width: 26; height: 26; iconSize: 16; onClicked: root.service.setReply(messageRow.modelData) }
                                 }
@@ -608,7 +636,15 @@ Item {
             }
         }
     }
+    property var reactionMessage: null
+    property var reactionChat: null
+    function openReactionPicker(message) {
+        openEmojiPicker();
+        reactionMessage = message;
+        reactionChat = service.selectedChat;
+    }
     function openEmojiPicker() {
+        reactionMessage = null; reactionChat = null;
         emojiChatKey = service.selectedChat?.key || "";
         emojiSelectionStart = composer.selectionStart;
         emojiSelectionEnd = composer.selectionEnd;
@@ -623,7 +659,15 @@ Item {
     function previewEmojiSearch(query) { emojiSearch.text = query; }
     function previewEmojiImage(path) { emojiPicker.contentItem.grabToImage(result => result.saveToFile(path)); }
     function insertEmoji(value) {
-        if (service.selectedChat?.key === emojiChatKey) {
+        if (reactionMessage) {
+            if (service.selectedChat?.key === reactionChat?.key) {
+                const current = service.messages.find(row => row.id === reactionMessage.id);
+                if (current) {
+                    const own = (current.reactions || []).some(reaction => reaction.chosen && !reaction.custom && reaction.emoji.replace(/\ufe0f/g, "") === value.replace(/\ufe0f/g, ""));
+                    service.reactToMessage(current, own ? "" : value, reactionChat);
+                }
+            }
+        } else if (service.selectedChat?.key === emojiChatKey) {
             composer.remove(emojiSelectionStart, emojiSelectionEnd);
             composer.insert(emojiSelectionStart, value);
             composer.cursorPosition = emojiSelectionStart + value.length;

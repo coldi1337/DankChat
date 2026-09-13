@@ -27,6 +27,9 @@ with tempfile.TemporaryDirectory(prefix='dankchat-ui-') as directory:
     subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=160x90:d=1', '-an', '-c:v', 'mpeg4', str(video)], check=True, timeout=15)
     env = os.environ.copy()
     env['DANKCHAT_TEST_VIDEO'] = str(video)
+    whatsapp_video = base / 'synthetic.f4v'
+    shutil.copy2(video, whatsapp_video)
+    env['DANKCHAT_TEST_WHATSAPP_GIF'] = str(whatsapp_video)
     artifacts = Path('/tmp/dankchat-ui-artifacts'); artifacts.mkdir(exist_ok=True)
     env['DANKCHAT_TEST_ARTIFACTS'] = str(artifacts)
     env['DANKCHAT_TEST_TRANSLATIONS'] = '{}' if '--preview' in sys.argv else (repo / 'translations/de.json').read_text()

@@ -99,7 +99,7 @@ ShellRoot {
                 ];
             }
             if (view.status !== Loader.Ready) return "FAIL preview not ready";
-            if (root.step >= 4 && I18n.trFor("dankChat", "Unread") !== "Unread") return "FAIL preview must use English";
+            if (root.step >= 4 && I18n.trFor("dankChat", "Unread chats") !== "Unread chats") return "FAIL preview must use English";
             if (root.step === 6) view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/dankchat-preview.png"));
             return root.step === 12 ? "PASS synthetic preview" : "STEP " + root.step;
         }

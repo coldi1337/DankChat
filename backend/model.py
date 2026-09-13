@@ -36,10 +36,32 @@ def chat(provider, raw):
     }
 
 
+def reactions(provider, rows):
+    """Combine provider counts while preserving the current user's selection."""
+    combined = {}
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        emoji = str(row.get("emoticon" if provider == "telegram" else "emoji", ""))
+        custom_id = str(row.get("custom_id", "") or "")
+        if not emoji:
+            continue
+        key = custom_id or emoji.replace("\ufe0f", "")
+        count = max(0, int(row.get("count", 0))) if provider == "telegram" else 1
+        if not count:
+            continue
+        entry = combined.setdefault(key, {"emoji": emoji, "count": 0, "chosen": False, "custom": bool(custom_id)})
+        entry["count"] += count
+        entry["chosen"] |= bool(row.get("chosen" if provider == "telegram" else "from_me", False))
+    return list(combined.values())
+
+
 def message(provider, raw):
     telegram = provider == "telegram"
     return {
         "id": str(raw.get("id", "")),
+        "reactions": reactions(provider, raw.get("reactions", [])),
+        "canReact": not bool(raw.get("is_service", False)),
         "text": str(raw.get("text", "")),
         "sender": str(raw.get("sender_name" if telegram else "sender", "")),
         "out": bool(raw.get("out" if telegram else "from_me", False)),

@@ -232,5 +232,23 @@
   },
   "Telegram pin limit reached: the main chat list allows 5 pinned chats without Premium (10 with Premium). Unpin another chat first.": {
     "Telegram pin limit reached: the main chat list allows 5 pinned chats without Premium (10 with Premium). Unpin another chat first.": "Telegram-Pin-Limit erreicht: In der Hauptliste sind ohne Premium 5 angepinnte Chats erlaubt (mit Premium 10). Löse zuerst einen anderen angepinnten Chat."
+  },
+  "Unread chats": {
+    "Unread chats": "Ungelesene Chats"
+  },
+  "React with emoji": {
+    "React with emoji": "Mit Emoji reagieren"
+  },
+  "Your reaction": {
+    "Your reaction": "Deine Reaktion"
+  },
+  "Telegram could not apply this reaction. It may be unavailable in this chat or on this message.": {
+    "Telegram could not apply this reaction. It may be unavailable in this chat or on this message.": "Telegram konnte diese Reaktion nicht setzen. Sie ist möglicherweise in diesem Chat oder für diese Nachricht nicht verfügbar."
+  },
+  "Choose a valid emoji reaction.": {
+    "Choose a valid emoji reaction.": "Wähle eine gültige Emoji-Reaktion."
+  },
+  "Select a message to react to.": {
+    "Select a message to react to.": "Wähle eine Nachricht zum Reagieren."
   }
 }

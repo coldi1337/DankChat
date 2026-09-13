@@ -34,7 +34,7 @@ ShellRoot {
             if (root.step === 1) chat.openWindow();
             if (root.step === 185) {
                 chat.filter = "all"; chat.query = ""; chat.unreadOnly = true;
-                if (chat.chats.length !== 240 || chat.visibleChats.length !== 180 || chat.unreadChatCount !== 180) return "FAIL unread-only filter/count";
+                if (chat.chats.length !== 240 || chat.visibleChats.length !== 180 || chat.unreadChatCount !== 180 || chat.unread !== 180 || chat.unreadMessages !== 360) return "FAIL unread-only filter/count";
                 chat.filter = "telegram"; chat.query = "  Synthetic chat 119  ";
                 if (chat.visibleChats.length !== 1 || chat.unreadChatCount !== 1 || chat.visibleChats[0].provider !== "telegram") return "FAIL unread provider/search combination";
                 chat.query = "Synthetic chat 116";

@@ -12,7 +12,7 @@ ColumnLayout {
     signal imageRequested(string path)
     readonly property string path: message.mediaPath || ""
     readonly property string mediaType: message.mediaType || ""
-    readonly property bool movie: mediaType === "video" || /\.(mp4|webm|mkv)$/i.test(path)
+    readonly property bool movie: mediaType === "video" || String(message.mimeType || "").toLowerCase().startsWith("video/") || /\.(mp4|f4v|m4v|mov|3gp|webm|mkv)$/i.test(path)
     readonly property bool sound: ["audio", "voice", "ptt"].includes(mediaType) || /\.(ogg|opus|mp3|m4a|wav)$/i.test(path)
     readonly property bool picture: !movie && !sound && (["image", "photo", "sticker", "gif"].includes(mediaType) || /\.(png|jpe?g|webp|gif)$/i.test(path))
     readonly property bool downloading: !!service.downloads[service.selectedChat?.key + ":" + message.id]

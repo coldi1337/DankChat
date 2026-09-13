@@ -39,7 +39,8 @@ PluginComponent {
     property int nextRequest: 0
     property int configurationEpoch: 0
     property var pending: ({})
-    readonly property int unread: chats.reduce((sum, chat) => sum + chat.unread, 0)
+    readonly property int unread: chats.filter(chat => chat.unread > 0).length
+    readonly property int unreadMessages: chats.reduce((sum, chat) => sum + chat.unread, 0)
     readonly property bool surfaceOpen: popout.shouldBeVisible || app.visible
     readonly property var matchingChats: chats.filter(chat => (filter === "all" || chat.provider === filter)
         && (chat.name + " " + chat.preview).toLowerCase().includes(query.trim().toLowerCase()))
@@ -59,7 +60,7 @@ PluginComponent {
         return true;
     }
     function configure() {
-        markingRead = {};
+        markingRead = {}; reacting = {};
         configurationEpoch++;
         downloads = {}; automaticMediaAttempts = {};
         loadingMessages = false;
@@ -233,6 +234,26 @@ PluginComponent {
             else ToastService.showInfo(I18n.trFor("dankChat", "Media saved"), destination);
         });
     }
+    property var reacting: ({})
+    function reactToMessage(message, emoji, chat) {
+        if (demo || !chat || selectedChat?.key !== chat.key || message.canReact === false) return;
+        const key = chat.key + ":" + message.id;
+        if (reacting[key]) return;
+        reacting = Object.assign({}, reacting, {[key]: true});
+        const finish = () => { const active = Object.assign({}, reacting); delete active[key]; reacting = active; };
+        if (!sendRequest(chat.provider, "reaction", {chat: chat, messageId: message.id, emoji: emoji}, result => {
+            finish();
+            if (!result.ok) { errorText = I18n.trFor("dankChat", result.error); return; }
+            if (selectedChat?.key !== chat.key) return;
+            sendRequest(chat.provider, "context", {chat: chat, messageId: message.id}, update => {
+                if (selectedChat?.key !== chat.key || !update.ok) return;
+                const current = update.messages?.find(row => row.id === message.id);
+                if (!current) return;
+                messagesReplacing();
+                messages = messages.map(row => row.id === message.id ? Object.assign({}, row, {reactions: current.reactions || []}) : row);
+            });
+        })) finish();
+    }
     property var markingRead: ({})
     function markChatRead(chat) {
         if (demo || !chat || markingRead[chat.key]) return;
@@ -314,7 +335,7 @@ PluginComponent {
         }
         stderr: StdioCollector {}
         onExited: {
-            root.pending = {}; root.writing = false; root.loadingMessages = false; root.markingRead = {};
+            root.pending = {}; root.writing = false; root.loadingMessages = false; root.markingRead = {}; root.reacting = {};
             if (!root.demo) root.errorText = I18n.trFor("dankChat", "The chat service stopped. Reload DankChat to reconnect.");
         }
     }

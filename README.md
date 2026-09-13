@@ -18,7 +18,7 @@ See [Validation](#validation) for the test coverage and environment.
 
 - Combined chat list with **All / TG / WA** filters and local search across chat
   names and previews. The search field has an X to clear it.
-- **Unread** toggle with a matching unread-chat count. Combine it with the
+- **Unread chats** toggle with a matching unread-chat count. Combine it with the
   provider filter and search; click again to show all matching chats.
 - Pinned chats appear first. Right-click a chat to **Pin/Unpin** or
   **Mark as read**. Telegram's pin-limit error explains the main-list limit of
@@ -40,12 +40,19 @@ See [Validation](#validation) for the test coverage and environment.
 - Offline emoji search using German and English names/keywords, category
   browsing, and an X to clear the search. Selection inserts at the cursor or
   replaces selected text.
+- Emoji reactions on Telegram and WhatsApp messages. Use the smiley on a
+  message to pick an emoji, or click an existing reaction to join it. Reaction
+  chips show counts and highlight your own reaction; click it again to remove
+  it. Telegram chat restrictions still apply. Custom Telegram emoji are shown
+  as placeholders; sending custom emoji and multiple Premium reactions are
+  not supported.
 - Automatic media loading in the open chat, newest first, one file at a time.
   Closing both surfaces stops further automatic downloads; failed downloads
   can be retried manually.
 - Inline images and supported stickers. Click an image to enlarge it, zoom with
   the wheel or +/− buttons, drag to pan, and double-click to toggle/reset zoom.
-- Inline video and audio playback. The video expand button opens a larger
+- Inline video and audio playback, including MP4-encoded WhatsApp GIFs
+  cached with a `.f4v` extension. The video expand button opens a larger
   player inside the current window without restarting playback. Message updates
   preserve existing players.
 - One-file attachment sending through an embedded, themed DMS file browser and
@@ -61,7 +68,7 @@ See [Validation](#validation) for the test coverage and environment.
   session and clears its local account cache and drafts; phone/cloud messages
   remain intact. Failed remote logout preserves the local session.
 - One background service shared by widget instances on multiple bars, plus an
-  unread-message count on the bar widget.
+  unread-chat count on the bar widget.
 - DMS themes, German UI translations, and a sample-data mode with sending
   disabled. WhatsApp synchronization runs as a systemd user service.
 
@@ -105,7 +112,7 @@ dms ipc call dankChat close
 
 Receiving receipt updates does not enable outgoing read receipts. The **Unread**
 filter uses the same unread state as the chat-list badges; its counter counts
-chats, while the bar counter counts unread messages. Marking a chat read removes
+chats, as does the bar counter (across all providers). Marking a chat read removes
 it from the filtered list without closing the conversation.
 
 ## Requirements and installation
@@ -190,8 +197,8 @@ before retrying: the remote service may already have accepted the message.
 ## Known limitations
 
 - This is a shared client, not full parity with the official Telegram/WhatsApp
-  applications. Telegram topics, message editing/forwarding, message pinning and
-  reactions are not implemented in the shared UI. **Chat pinning is supported.**
+  applications. Telegram topics, message editing/forwarding and message pinning
+  are not implemented in the shared UI. **Chat pinning is supported.**
 - WhatsApp voice recording, group mentions and multiple-account setup are not
   implemented in the shared UI.
 - Telegram vector stickers and some media formats are not rendered inline;

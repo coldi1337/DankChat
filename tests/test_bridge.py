@@ -1,4 +1,5 @@
 import asyncio
+import ast
 import json
 import os
 from pathlib import Path
@@ -12,7 +13,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 from bridge import Bridge, ProviderError, Telegram, WhatsApp
-from model import chat, key, message, messages
+from model import chat, key, message, messages, reactions
 
 
 class ModelTests(unittest.TestCase):
@@ -66,11 +67,44 @@ class RoutingTests(unittest.IsolatedAsyncioTestCase):
         self.provider.call.assert_not_called()
 
     async def test_wrong_provider_rejected_for_read_and_write(self):
-        for action in ("messages", "send", "file", "read", "pin", "download", "export", "context"):
+        for action in ("messages", "send", "file", "read", "pin", "download", "export", "context", "reaction"):
             with self.assertRaises(ProviderError):
                 await self.bridge.dispatch({"provider": "telegram", "action": action,
                     "chat": {"provider": "whatsapp", "id": "synthetic"}, "text": "hello"})
         self.provider.call.assert_not_called()
+
+    async def test_reaction_payload_and_removal(self):
+        for emoji in ("👍", ""):
+            await self.bridge.dispatch({"provider": "telegram", "action": "reaction", "chat": {"provider": "telegram", "id": "123"}, "messageId": "9", "emoji": emoji})
+            self.assertEqual(self.provider.call.call_args.args[0], "reaction")
+        for emoji in (None, [], "a" * 17, "\n"):
+            with self.assertRaises(ProviderError):
+                await self.bridge.dispatch({"provider": "telegram", "action": "reaction", "chat": {"provider": "telegram", "id": "123"}, "messageId": "9", "emoji": emoji})
+        with self.assertRaises(ProviderError):
+            await self.bridge.dispatch({"provider": "telegram", "action": "reaction", "chat": {"provider": "telegram", "id": "123"}, "messageId": "", "emoji": "👍"})
+
+    async def test_telegram_reaction_routing_and_error(self):
+        provider = Telegram()
+        provider.connect = AsyncMock()
+        provider.daemon = AsyncMock()
+        provider.daemon.client.is_user_authorized.return_value = True
+        provider.daemon.dialogs_cache = [{"id": 123}]
+        provider.daemon.execute_command.return_value = {"success": True}
+        await provider.call("reaction", {"chat": {"id": "123"}, "messageId": "9", "emoji": "❤️"})
+        provider.daemon.execute_command.assert_awaited_once_with({"action": "send_reaction", "chat_id": "123", "message_id": "9", "emoticon": "❤"})
+        provider.daemon.execute_command.return_value = {"success": False}
+        with self.assertRaisesRegex(ProviderError, "unavailable"):
+            await provider.call("reaction", {"chat": {"id": "123"}, "messageId": "9", "emoji": "👍"})
+
+    async def test_whatsapp_reaction_routes_to_exact_account_chat_message(self):
+        provider = WhatsApp()
+        backend = Mock()
+        provider.backend = Mock(return_value=backend)
+        backend.react.return_value = {"ok": True}
+        for emoji in ("👍", ""):
+            await provider.call("reaction", {"chat": {"id": "team@g.us", "account": "one"}, "messageId": "9", "emoji": emoji})
+            backend.react.assert_called_with("team@g.us", "9", emoji)
+        provider.backend.assert_called_with("one")
 
     async def test_failed_send_is_never_retried(self):
         self.provider.call.side_effect = TimeoutError
@@ -158,6 +192,43 @@ class RoutingTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ProviderError):
             await provider.call("send", {"chat": {"id": "456"}, "text": "hello"})
         provider.daemon.execute_command.assert_not_called()
+
+
+class ReactionModelTests(unittest.TestCase):
+    def test_whatsapp_counts_and_own_reaction(self):
+        rows = [{"emoji": "👍", "from_me": False}, {"emoji": "👍", "from_me": True}, {"emoji": "❤️", "from_me": False}]
+        self.assertEqual(reactions("whatsapp", rows), [{"emoji": "👍", "count": 2, "chosen": True, "custom": False}, {"emoji": "❤️", "count": 1, "chosen": False, "custom": False}])
+
+    def test_telegram_counts_custom_and_own(self):
+        result = reactions("telegram", [{"emoticon": "👍", "count": 4, "chosen": True}, {"emoticon": "⭐", "count": 2, "chosen": False, "custom_id": "99"}])
+        self.assertEqual(result[0]["count"], 4)
+        self.assertTrue(result[0]["chosen"])
+        self.assertTrue(result[1]["custom"])
+        self.assertFalse(message("telegram", {"is_service": True})["canReact"])
+        self.assertTrue(message("telegram", {})["canReact"])
+
+    def test_pin_service_event_does_not_add_to_server_unread_count(self):
+        row = chat("telegram", {"id": 1, "unread_count": 3, "pinned": True, "last_message": {"text": "Pinned a message"}})
+        self.assertEqual(row["unread"], 3)
+
+
+class TelegramReactionSerializationTests(unittest.TestCase):
+    def test_standard_custom_and_own_reactions_without_session(self):
+        # Extract the pure helper: importing the vendor module initializes session paths.
+        tree = ast.parse((ROOT / "vendor/telegram/telegram_client.py").read_text())
+        node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "message_reactions")
+        class Emoji:
+            def __init__(self, emoji): self.emoticon = emoji
+        scope = {"ReactionEmoji": Emoji}
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "telegram-reactions", "exec"), scope)
+        serialize = scope["message_reactions"]
+        self.assertEqual(serialize(SimpleNamespace()), [])
+        rows = [SimpleNamespace(reaction=Emoji("❤"), count=2, chosen_order=0),
+                SimpleNamespace(reaction=SimpleNamespace(document_id=42), count=1, chosen_order=None)]
+        result = serialize(SimpleNamespace(reactions=SimpleNamespace(results=rows)))
+        self.assertEqual(result[0], {"emoticon": "❤️", "count": 2, "chosen": True, "custom_id": ""})
+        self.assertEqual(result[1]["custom_id"], "42")
+        self.assertFalse(result[1]["chosen"])
 
 
 class TransportTests(unittest.TestCase):

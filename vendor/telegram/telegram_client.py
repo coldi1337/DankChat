@@ -79,6 +79,28 @@ def get_initials(name):
         return (parts[0][0] + parts[-1][0]).upper()
     return name.strip()[:2].upper()
 
+def message_reactions(m):
+    reactions_list = []
+    if hasattr(m, "reactions") and m.reactions and hasattr(m.reactions, "results"):
+        for r in m.reactions.results:
+            emoticon = ""
+            if isinstance(r.reaction, ReactionEmoji):
+                emoticon = r.reaction.emoticon
+            elif hasattr(r.reaction, "document_id"):
+                emoticon = "⭐"
+            if emoticon:
+                if emoticon in ("\u2764", "❤"):
+                    emoticon = "❤️"
+                is_chosen = (getattr(r, "chosen_order", None) is not None) or bool(getattr(r, "chosen", False))
+                reactions_list.append({
+                    "emoticon": emoticon,
+                    "count": r.count,
+                    "chosen": is_chosen,
+                    "custom_id": str(getattr(r.reaction, "document_id", "") or "")
+                })
+    return reactions_list
+
+
 def format_message_action(msg):
     if not msg or not getattr(msg, "action", None):
         return ""
@@ -512,6 +534,8 @@ class TelegramBackend:
                     "timestamp": int(m.date.timestamp()) if m.date else 0,
                     "time": time_str,
                     "pinned": True,
+                    "reactions": message_reactions(m),
+                    "sender_name": sender_name,
                     "reply_to": (getattr(m.reply_to, "reply_to_top_id", None) or getattr(m.reply_to, "reply_to_msg_id", None)) if m.reply_to else None,
                     "media": bool(m.media),
                     "media_type": media_type,
@@ -685,23 +709,7 @@ class TelegramBackend:
                 is_read = bool(m.out and read_outbox_max_id > 0 and m.id <= read_outbox_max_id)
                 msg_status = "read" if is_read else ("sent" if m.out else "")
 
-                reactions_list = []
-                if hasattr(m, "reactions") and m.reactions and hasattr(m.reactions, "results"):
-                    for r in m.reactions.results:
-                        emoticon = ""
-                        if isinstance(r.reaction, ReactionEmoji):
-                            emoticon = r.reaction.emoticon
-                        elif hasattr(r.reaction, "document_id"):
-                            emoticon = "⭐"
-                        if emoticon:
-                            if emoticon in ("\u2764", "❤"):
-                                emoticon = "❤️"
-                            is_chosen = (getattr(r, "chosen_order", None) is not None) or bool(getattr(r, "chosen", False))
-                            reactions_list.append({
-                                "emoticon": emoticon,
-                                "count": r.count,
-                                "chosen": is_chosen
-                            })
+                reactions_list = message_reactions(m)
 
                 reply_to_id = None
                 if m.reply_to:
@@ -740,6 +748,7 @@ class TelegramBackend:
                     "pinned": bool(getattr(m, "pinned", False)),
                     "is_edited": bool(getattr(m, "edit_date", None) is not None),
                     "reactions": reactions_list,
+                    "is_service": bool(getattr(m, "action", None)),
                     "media_type": media_type,
                     "media_path": media_path,
                     "media_thumb": media_thumb,
@@ -1044,6 +1053,10 @@ class TelegramBackend:
                 entity = await self.client.get_entity(cid)
                 reaction_list = [ReactionEmoji(emoticon=emoticon)] if emoticon else []
                 await self.client(SendReactionRequest(peer=entity, msg_id=mid, reaction=reaction_list))
+                for ck in list(self.messages_cache):
+                    if ck.startswith(f"{chat_id}_"):
+                        self.messages_cache.pop(ck, None)
+                self.pinned_cache.pop(cid, None)
                 if cid in getattr(self, "chat_messages_cache", {}):
                     del self.chat_messages_cache[cid]
                 return {"success": True, "chat_id": cid, "message_id": mid, "emoticon": emoticon}

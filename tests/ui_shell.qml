@@ -56,6 +56,10 @@ ShellRoot {
             {id: "2", text: "Eine längere Beispielnachricht für schmale Fenster und unterschiedliche Farbschemata.", out: true, sender: "", mediaType: "", mediaPath: "", time: "12:01", deliveryStatus: "read"},
             {id: "3", text: "Diese Antwort dient ausschließlich dem Layouttest.", out: false, sender: "Ein besonders langer Beispiel-Absendername", mediaType: "", mediaPath: "", time: "12:02", replyText: "Eine längere Beispielnachricht …"}
         ]
+        property var reactionEvents: []
+        function reactToMessage(message, emoji, chat) {
+            reactionEvents = reactionEvents.concat([{id: message.id, emoji: emoji, chat: chat.key}]);
+        }
         function setDraft(value) { draft = value; }
         function setReply(value) { reply = value; }
         function closeDropdown() {}
@@ -86,7 +90,7 @@ ShellRoot {
             Theme.fontScale = root.step >= 60 ? 1 : root.step % 5 === 0 ? 1.5 : 1;
             if (Colors.contrast(Theme.primaryContainer, contrastProbe.color) < 4.5) return "FAIL bubble contrast " + Theme.currentTheme;
             if (view.status !== Loader.Ready) return "FAIL view not ready";
-            if (I18n.trFor("dankChat", "Unread") !== "Ungelesen") return "FAIL unread translation";
+            if (I18n.trFor("dankChat", "Unread chats") !== "Ungelesene Chats") return "FAIL unread translation";
             const pinError = I18n.trFor("dankChat", "Telegram pin limit reached: the main chat list allows 5 pinned chats without Premium (10 with Premium). Unpin another chat first.");
             if (!pinError.startsWith("Telegram-Pin-Limit")) return "FAIL pin-limit translation";
             mock.errorText = root.step >= 24 && root.step <= 27 ? pinError : "";
@@ -95,6 +99,33 @@ ShellRoot {
             root.testWidth = root.step >= 60 ? 480 : [360, 480, 760, 1080][root.step % 4];
             if (root.step >= 60 && root.step <= 68) { mock.accountsOpen = false; root.testWidth = 480; Theme.fontScale = 1; }
             if (root.step >= 70) { mock.accountsOpen = false; root.testWidth = 480; Theme.fontScale = 1; }
+            if (root.step >= 41 && root.step <= 43) mock.accountsOpen = false;
+            if (root.step === 41) {
+                mock.messages = mock.messages.map((row, index) => index === 0 ? Object.assign({}, row, {reactions: [{emoji: "👍", count: 2, chosen: true, custom: false}]}) : row);
+                mock.draft = "Keep this draft";
+                view.item.openReactionPicker(mock.messages[0]);
+                view.item.insertEmoji("👍");
+                if (mock.draft !== "Keep this draft" || mock.reactionEvents.length !== 1 || mock.reactionEvents[0].emoji !== "") return "FAIL reaction removal changed draft or wrong action";
+                view.item.openReactionPicker(mock.messages[0]);
+                view.item.insertEmoji("❤️");
+                if (mock.reactionEvents[1].emoji !== "❤️") return "FAIL reaction selection";
+                view.item.openReactionPicker(mock.messages[0]);
+                mock.selectedChat = {key: "different", provider: "telegram"};
+                view.item.insertEmoji("🔥");
+                if (mock.reactionEvents.length !== 2) return "FAIL reaction sent after chat switch";
+                mock.selectedChat = mock.chats[0];
+            }
+            if (root.step === 43) {
+                const chip = root.findItem(view.item, "reactionChip");
+                if (!chip || !chip.modelData.chosen || chip.modelData.count !== 2 || !chip.visible || chip.width <= 0 || chip.height <= 0) return "FAIL own reaction display";
+            }
+            if (root.step === 67) {
+                mock.messages = [{id: "wa-gif", text: "", mediaType: "gif", mimeType: "video/mp4", mediaPath: Quickshell.env("DANKCHAT_TEST_WHATSAPP_GIF"), out: false, sender: "Test"}];
+            }
+            if (root.step === 68) {
+                const gifPlayer = root.findItem(view.item, "inlineMediaPlayer");
+                if (!gifPlayer || !gifPlayer.visible || gifPlayer.audioOnly) return "FAIL WhatsApp MP4 GIF was not rendered as video";
+            }
             if (root.step === 70 || root.step === 80) {
                 mock.selectedChat = {key: "scroll-" + root.step, provider: "telegram", name: "Scroll test"};
                 mock.messages = [];
@@ -171,7 +202,7 @@ ShellRoot {
                 view.item.previewEmojiImage(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/emoji.png");
             }
             if (root.step === 68) view.item.insertEmoji("👍");
-            if ([4, 5, 6, 7, 8, 24, 25, 26, 27].includes(root.step)) view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/layout-" + root.step + ".png"));
+            if ([4, 5, 6, 7, 8, 24, 25, 26, 27, 43].includes(root.step)) view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/layout-" + root.step + ".png"));
             return root.step === 100 ? "PASS accounts, resize, picker open/close" : "STEP " + root.step;
 
         }

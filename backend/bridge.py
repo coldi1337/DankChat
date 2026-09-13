@@ -158,7 +158,7 @@ class Telegram:
             result = await self.daemon.execute_command({"action": "dialogs", "limit": 200})
             return {"ok": True, "chats": [chat("telegram", c) for c in result["chats"]]}
         target = data.get("chat", {})
-        if action in {"messages", "send", "read", "file", "download", "pin", "context"}:
+        if action in {"messages", "send", "read", "file", "download", "pin", "context", "reaction"}:
             # Resolve only exact dialogs returned by this account, never a guessed recipient.
             ident = str(target.get("id", ""))
             if not any(str(c["id"]) == ident for c in self.daemon.dialogs_cache):
@@ -170,6 +170,12 @@ class Telegram:
                     if path and Path(path).is_file():
                         row["media_path"] = path
                 return {"ok": True, "messages": messages("telegram", rows)}
+            if action == "reaction":
+                result = await self.daemon.execute_command({"action": "send_reaction", "chat_id": ident,
+                    "message_id": data["messageId"], "emoticon": data["emoji"].replace("\ufe0f", "")})
+                if not result.get("success"):
+                    raise ProviderError("Telegram could not apply this reaction. It may be unavailable in this chat or on this message.")
+                return {"ok": True}
             if action == "pin":
                 from telethon.tl import functions, types
                 from telethon.errors import PinnedDialogsTooMuchError
@@ -331,6 +337,8 @@ class WhatsApp:
             result = await asyncio.to_thread(backend.send, ident, data["text"], data.get("replyId", ""))
         elif action == "file":
             result = await asyncio.to_thread(backend.send_files, ident, [data["path"]], data.get("text", ""), data.get("replyId", ""))
+        elif action == "reaction":
+            result = await asyncio.to_thread(backend.react, ident, data["messageId"], data["emoji"])
         elif action == "read":
             result = await asyncio.to_thread(backend.chat_action, ident, "read")
         elif action == "acknowledge":
@@ -368,9 +376,9 @@ class Bridge:
         provider = self.providers[name]
         if action == "status":
             return await provider.status()
-        if action not in {"chats", "messages", "send", "file", "read", "acknowledge", "login", "password", "download", "pin", "logout", "cancel_login", "export", "context"}:
+        if action not in {"chats", "messages", "send", "file", "read", "acknowledge", "login", "password", "download", "pin", "logout", "cancel_login", "export", "context", "reaction"}:
             raise ProviderError("Unsupported action.")
-        if action in {"messages", "send", "file", "read", "acknowledge", "download", "pin", "export", "context"}:
+        if action in {"messages", "send", "file", "read", "acknowledge", "download", "pin", "export", "context", "reaction"}:
             target = request.get("chat")
             if not isinstance(target, dict) or target.get("provider") != name or not target.get("id"):
                 raise ProviderError("The chat does not belong to this service.")
@@ -384,6 +392,13 @@ class Bridge:
                 raise ProviderError("Load the media before saving it.")
             await asyncio.to_thread(export_media, selected["mediaPath"], request.get("destination", ""))
             return {"ok": True}
+        if action == "reaction":
+            emoji = request.get("emoji")
+            ident = request.get("messageId")
+            if not isinstance(ident, str) or not ident or len(ident) > 256:
+                raise ProviderError("Select a message to react to.")
+            if not isinstance(emoji, str) or len(emoji) > 16 or any(ord(c) < 32 for c in emoji):
+                raise ProviderError("Choose a valid emoji reaction.")
         if action == "pin" and not isinstance(request.get("pinned"), bool):
             raise ProviderError("Invalid pin state.")
         if action in {"send", "file"}:
