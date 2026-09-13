@@ -8,7 +8,10 @@ root = Path(__file__).resolve().parents[1]
 config = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
 if not config.is_absolute():
     config = Path.home() / ".config"
-destination = config / "DankMaterialShell/plugins/DankChat"
+plugins = config / "DankMaterialShell/plugins"
+# Registry installations already live in the plugin directory; do not add a
+# second symlink with the same plugin ID under a different directory name.
+destination = root if root.parent.resolve() == plugins.resolve() else plugins / "DankChat"
 destination.parent.mkdir(parents=True, exist_ok=True)
 if destination.exists() or destination.is_symlink():
     if destination.resolve() != root:

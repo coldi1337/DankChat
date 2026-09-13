@@ -195,3 +195,16 @@ These are automated and isolated results. No agent test sent real messages,
 marked real chats read, changed real pins, or logged out either account. Earlier
 whole-shell crashes remain a release qualification concern; this pass does not
 prove they cannot recur. The repository has not been submitted to the registry.
+
+## Registry preparation — 2026-09-13
+
+A synthetic-only preview was rendered from `tests/preview_shell.qml` using
+`python3 scripts/test-ui --preview`, visually inspected, and saved as
+`docs/preview.png`. No live account content or desktop pixels are included.
+Installer tests now cover a fresh checkout and an existing registry installation
+path with private config/data directories and stub DMS/systemd commands. Both
+are idempotent; the registry path does not create a duplicate plugin symlink.
+The project Python suite now contains 31 passing tests. The registry entry is
+limited to the tested Arch/Hyprland combination and does not claim central i18n
+approval. Submission is a draft while the documented stability/acceptance work
+remains open.

@@ -16,7 +16,7 @@ with tempfile.TemporaryDirectory(prefix='dankchat-ui-') as directory:
     for child in dms.iterdir():
         if child.is_dir():
             shutil.copytree(child, base / child.name)
-    (base / 'shell.qml').write_text((repo / ('tests/service_shell.qml' if '--service' in sys.argv else 'tests/ui_shell.qml')).read_text())
+    (base / 'shell.qml').write_text((repo / ('tests/preview_shell.qml' if '--preview' in sys.argv else 'tests/service_shell.qml' if '--service' in sys.argv else 'tests/ui_shell.qml')).read_text())
     plugin = base / 'testplugin'; plugin.mkdir()
     for source in list(repo.glob('*.qml')) + list(repo.glob('*.js')):
         shutil.copy2(source, plugin / source.name)
@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory(prefix='dankchat-ui-') as directory:
     success = False
     try:
         time.sleep(2)
-        for step in range(200 if '--service' in sys.argv else 100):
+        for step in range(12 if '--preview' in sys.argv else 200 if '--service' in sys.argv else 100):
             try:
                 response = subprocess.run(['qs', '-p', str(base), 'ipc', 'call', 'test', 'advance'], env=env, capture_output=True, text=True, timeout=3)
             except subprocess.TimeoutExpired:

@@ -5,7 +5,9 @@ plugin. Open a compact dropdown from DankBar or use the same conversation in a
 regular, resizable, tiling-capable window. Both services share one interface with
 DMS colors and widgets. No Electron runtime or embedded browser.
 
-**Development version · not submitted to the DMS registry.** Both accounts have
+![DankChat showing synthetic Telegram and WhatsApp conversations](docs/preview.png)
+
+**Development version · DMS registry submission in preparation.** Both accounts have
 been linked in the development environment, and the automated checks pass.
 Earlier whole-shell crashes remain under investigation; broader real-account
 and compositor testing is still required. See [Validation](#validation).
@@ -144,6 +146,16 @@ requested or a DankChat session exists. WhatsApp sync starts after a linked
 session is found. Disabling a provider pauses it and preserves its session;
 disabling WhatsApp or DankChat stops WhatsApp sync.
 
+### Registry installation
+
+The registry submission is a draft; DankChat is not yet available in the public
+plugin catalog. After approval, install it through the DMS plugin browser. The
+registry downloads the plugin source; it does not install wacli, the Python
+virtualenv or the WhatsApp user unit. Open the downloaded plugin directory and
+run `sh scripts/setup-telegram` followed by `python3 scripts/install-local` before
+enabling it. The latter also installs the launcher and sync unit, without creating
+a duplicate plugin when the checkout is already inside DMS's plugin directory.
+
 ### Allowing the app window to tile
 
 If your compositor floats all DMS windows, add an exception for the exact title
@@ -219,7 +231,7 @@ media. It does not use real account databases or send real messages. Set
 `DANKCHAT_DMS_SOURCE` to the active DMS source directory if its path differs from
 the development default in the script.
 
-The final automated pass covered 29 project Python tests, 152 passing upstream
+The final automated pass covered 31 project Python tests, 152 passing upstream
 WhatsApp tests with one intentional skip, both QtTest suites, UI/media regressions
 and a 200-step service run. See [docs/validation.md](docs/validation.md) for the
 recorded environment, results and remaining acceptance checks.
