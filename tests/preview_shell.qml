@@ -23,7 +23,7 @@ ShellRoot {
     property int step: 0
     property int testWidth: 900
     Rectangle { id: contrastProbe; color: Colors.readable(Theme.primaryContainer, Theme.surfaceText, Theme.primaryText) }
-    Component.onCompleted: { DC.Style.theme = Theme; DC.Style.settings = SettingsData; I18n.registerPluginTranslations("dankChat", JSON.parse(Quickshell.env("DANKCHAT_TEST_TRANSLATIONS"))); }
+    Component.onCompleted: { DC.Style.theme = Theme; DC.Style.settings = SettingsData; SessionData.locale = "en"; }
     QtObject {
         id: mock
         signal messagesReplacing()
@@ -99,6 +99,7 @@ ShellRoot {
                 ];
             }
             if (view.status !== Loader.Ready) return "FAIL preview not ready";
+            if (root.step >= 4 && I18n.trFor("dankChat", "Unread") !== "Unread") return "FAIL preview must use English";
             if (root.step === 6) view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/dankchat-preview.png"));
             return root.step === 12 ? "PASS synthetic preview" : "STEP " + root.step;
         }

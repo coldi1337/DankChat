@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix='dankchat-ui-') as directory:
     env['DANKCHAT_TEST_VIDEO'] = str(video)
     artifacts = Path('/tmp/dankchat-ui-artifacts'); artifacts.mkdir(exist_ok=True)
     env['DANKCHAT_TEST_ARTIFACTS'] = str(artifacts)
-    env['DANKCHAT_TEST_TRANSLATIONS'] = (repo / 'translations/de.json').read_text()
+    env['DANKCHAT_TEST_TRANSLATIONS'] = '{}' if '--preview' in sys.argv else (repo / 'translations/de.json').read_text()
     for name in ('CONFIG', 'CACHE', 'STATE', 'DATA'):
         path = base / name.lower(); path.mkdir()
         env['XDG_' + name + '_HOME'] = str(path)
