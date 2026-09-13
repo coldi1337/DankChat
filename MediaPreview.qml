@@ -32,11 +32,15 @@ ColumnLayout {
         id: playerLoader
         Layout.fillWidth: true
         Layout.preferredHeight: root.sound ? 48 : 228
-        visible: root.path.length > 0 && (root.movie || root.sound)
-        active: visible
+        active: root.path.length > 0 && (root.movie || root.sound)
+        visible: active
+        property url loadedMediaUrl: ""
         function loadPlayer() {
-            if (active) setSource(Qt.resolvedUrl("MediaPlayerView.qml") + "?revision=" + root.service.viewRevision, {sourceUrl: Links.localFileUrl(root.path), service: root.service, audioOnly: root.sound});
-            else source = "";
+            if (!active) { source = ""; loadedMediaUrl = ""; return; }
+            const mediaUrl = Links.localFileUrl(root.path);
+            if (source.toString().length && loadedMediaUrl.toString() === mediaUrl) return;
+            loadedMediaUrl = mediaUrl;
+            setSource(Qt.resolvedUrl("MediaPlayerView.qml") + "?revision=" + root.service.viewRevision, {sourceUrl: mediaUrl, service: root.service, audioOnly: root.sound});
         }
         onActiveChanged: loadPlayer()
         Component.onCompleted: loadPlayer()

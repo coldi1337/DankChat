@@ -7,6 +7,7 @@ import qs.Widgets
 
 Item {
     id: root
+    objectName: "inlineMediaPlayer"
     required property url sourceUrl
     required property var service
     property bool audioOnly: false

@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import signal
 import shutil
+import tempfile
 import sys
 
 from model import chat, messages
@@ -41,6 +42,24 @@ def load_module(name, path):
     sys.modules[name] = module
     loader.exec_module(module)
     return module
+
+
+def export_media(source, destination):
+    source, destination = Path(source), Path(destination)
+    if not source.is_file() or not destination.is_absolute() or not destination.parent.is_dir():
+        raise ProviderError("Choose a valid destination for the downloaded media.")
+    if source.resolve() == destination.resolve():
+        return
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix=".dankchat-", dir=destination.parent, delete=False) as output:
+            temporary = Path(output.name)
+            with source.open("rb") as content:
+                shutil.copyfileobj(content, output)
+        os.replace(temporary, destination)
+    finally:
+        if temporary:
+            temporary.unlink(missing_ok=True)
 
 
 class ProviderError(Exception):
@@ -139,15 +158,26 @@ class Telegram:
             result = await self.daemon.execute_command({"action": "dialogs", "limit": 200})
             return {"ok": True, "chats": [chat("telegram", c) for c in result["chats"]]}
         target = data.get("chat", {})
-        if action in {"messages", "send", "read", "file", "download", "pin"}:
+        if action in {"messages", "send", "read", "file", "download", "pin", "context"}:
             # Resolve only exact dialogs returned by this account, never a guessed recipient.
             ident = str(target.get("id", ""))
             if not any(str(c["id"]) == ident for c in self.daemon.dialogs_cache):
                 raise ProviderError("Select an existing Telegram chat first.")
+            if action == "context":
+                rows = await self.daemon.get_messages_for_chat(ident, limit=40, around_id=data["messageId"])
+                for row in rows:
+                    path = self.downloads.get((ident, str(row["id"])))
+                    if path and Path(path).is_file():
+                        row["media_path"] = path
+                return {"ok": True, "messages": messages("telegram", rows)}
             if action == "pin":
                 from telethon.tl import functions, types
+                from telethon.errors import PinnedDialogsTooMuchError
                 peer = types.InputDialogPeer(await client.get_input_entity(int(ident)))
-                await client(functions.messages.ToggleDialogPinRequest(peer=peer, pinned=data["pinned"]))
+                try:
+                    await client(functions.messages.ToggleDialogPinRequest(peer=peer, pinned=data["pinned"]))
+                except PinnedDialogsTooMuchError as exc:
+                    raise ProviderError("Telegram pin limit reached: the main chat list allows 5 pinned chats without Premium (10 with Premium). Unpin another chat first.") from exc
                 return {"ok": True}
             if action == "messages":
                 result = await self.daemon.execute_command({"action": "messages", "chat_id": ident, "limit": 100})
@@ -281,13 +311,19 @@ class WhatsApp:
         if action == "chats":
             result = await asyncio.to_thread(backend.chats)
             return {"ok": True, "chats": [chat("whatsapp", c) for c in result["chats"]]}
+        if action == "context":
+            result = await asyncio.to_thread(backend.messages, ident, limit=40, around_id=data["messageId"])
+            await asyncio.to_thread(apply_receipts, self.helper_state / "receipts.sqlite", ident, result["messages"])
+            return {"ok": True, "messages": messages("whatsapp", result["messages"])}
         if action == "messages":
             result = await asyncio.to_thread(backend.messages, ident)
             await asyncio.to_thread(apply_receipts, self.helper_state / "receipts.sqlite", ident, result["messages"])
             return {"ok": True, "messages": messages("whatsapp", result["messages"])}
         if action == "download":
             await asyncio.to_thread(backend.download_media, ident, data["messageId"])
-            return {"ok": True}
+            result = await asyncio.to_thread(backend.messages, ident, limit=1, around_id=data["messageId"])
+            row = next((row for row in result["messages"] if str(row["id"]) == str(data["messageId"])), {})
+            return {"ok": True, "path": row.get("local_path", "")}
         if action == "pin":
             await asyncio.to_thread(backend.chat_action, ident, "pin" if data["pinned"] else "unpin")
             return {"ok": True}
@@ -295,6 +331,8 @@ class WhatsApp:
             result = await asyncio.to_thread(backend.send, ident, data["text"], data.get("replyId", ""))
         elif action == "file":
             result = await asyncio.to_thread(backend.send_files, ident, [data["path"]], data.get("text", ""), data.get("replyId", ""))
+        elif action == "read":
+            result = await asyncio.to_thread(backend.chat_action, ident, "read")
         elif action == "acknowledge":
             result = await asyncio.to_thread(backend.acknowledge_notifications, ident)
         else:
@@ -330,12 +368,22 @@ class Bridge:
         provider = self.providers[name]
         if action == "status":
             return await provider.status()
-        if action not in {"chats", "messages", "send", "file", "read", "acknowledge", "login", "password", "download", "pin", "logout", "cancel_login"}:
+        if action not in {"chats", "messages", "send", "file", "read", "acknowledge", "login", "password", "download", "pin", "logout", "cancel_login", "export", "context"}:
             raise ProviderError("Unsupported action.")
-        if action in {"messages", "send", "file", "read", "acknowledge", "download", "pin"}:
+        if action in {"messages", "send", "file", "read", "acknowledge", "download", "pin", "export", "context"}:
             target = request.get("chat")
             if not isinstance(target, dict) or target.get("provider") != name or not target.get("id"):
                 raise ProviderError("The chat does not belong to this service.")
+        if action == "export":
+            result = await provider.call("messages", request)
+            selected = next((row for row in result.get("messages", []) if row["id"] == str(request.get("messageId"))), None)
+            if selected is None:
+                context = await provider.call("context", request)
+                selected = next((row for row in context.get("messages", []) if row["id"] == str(request.get("messageId"))), None)
+            if not selected or not selected.get("mediaPath"):
+                raise ProviderError("Load the media before saving it.")
+            await asyncio.to_thread(export_media, selected["mediaPath"], request.get("destination", ""))
+            return {"ok": True}
         if action == "pin" and not isinstance(request.get("pinned"), bool):
             raise ProviderError("Invalid pin state.")
         if action in {"send", "file"}:

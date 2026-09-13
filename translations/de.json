@@ -160,5 +160,77 @@
   },
   "Sent": {
     "Sent": "Gesendet"
+  },
+  "Save media as…": {
+    "Save media as…": "Medien speichern unter …"
+  },
+  "Media saved": {
+    "Media saved": "Medien gespeichert"
+  },
+  "Original message": {
+    "Original message": "Ursprüngliche Nachricht"
+  },
+  "The original message is unavailable.": {
+    "The original message is unavailable.": "Die ursprüngliche Nachricht ist nicht verfügbar."
+  },
+  "No chats found.": {
+    "No chats found.": "Keine Chats gefunden."
+  },
+  "No chats available yet.": {
+    "No chats available yet.": "Noch keine Chats verfügbar."
+  },
+  "Emoji": {
+    "Emoji": "Emoji"
+  },
+  "All emoji": {
+    "All emoji": "Alle Emojis"
+  },
+  "Search emoji…": {
+    "Search emoji…": "Emojis suchen…"
+  },
+  "No emoji found.": {
+    "No emoji found.": "Keine Emojis gefunden."
+  },
+  "Smileys & Emotion": {
+    "Smileys & Emotion": "Smileys & Gefühle"
+  },
+  "People & Body": {
+    "People & Body": "Menschen & Körper"
+  },
+  "Component": {
+    "Component": "Bestandteile"
+  },
+  "Animals & Nature": {
+    "Animals & Nature": "Tiere & Natur"
+  },
+  "Food & Drink": {
+    "Food & Drink": "Essen & Trinken"
+  },
+  "Travel & Places": {
+    "Travel & Places": "Reisen & Orte"
+  },
+  "Activities": {
+    "Activities": "Aktivitäten"
+  },
+  "Objects": {
+    "Objects": "Objekte"
+  },
+  "Symbols": {
+    "Symbols": "Symbole"
+  },
+  "Flags": {
+    "Flags": "Flaggen"
+  },
+  "Mark as read": {
+    "Mark as read": "Als gelesen markieren"
+  },
+  "Unread": {
+    "Unread": "Ungelesen"
+  },
+  "No unread chats.": {
+    "No unread chats.": "Keine ungelesenen Chats."
+  },
+  "Telegram pin limit reached: the main chat list allows 5 pinned chats without Premium (10 with Premium). Unpin another chat first.": {
+    "Telegram pin limit reached: the main chat list allows 5 pinned chats without Premium (10 with Premium). Unpin another chat first.": "Telegram-Pin-Limit erreicht: In der Hauptliste sind ohne Premium 5 angepinnte Chats erlaubt (mit Premium 10). Löse zuerst einen anderen angepinnten Chat."
   }
 }

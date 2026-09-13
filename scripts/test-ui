@@ -18,12 +18,15 @@ with tempfile.TemporaryDirectory(prefix='dankchat-ui-') as directory:
             shutil.copytree(child, base / child.name)
     (base / 'shell.qml').write_text((repo / ('tests/service_shell.qml' if '--service' in sys.argv else 'tests/ui_shell.qml')).read_text())
     plugin = base / 'testplugin'; plugin.mkdir()
-    for source in list(repo.glob('*.qml')) + [repo / 'linkify.js']:
+    for source in list(repo.glob('*.qml')) + list(repo.glob('*.js')):
         shutil.copy2(source, plugin / source.name)
     (plugin / 'scripts').mkdir()
     shutil.copy2(repo / 'tests/fake_bridge.py', plugin / 'fake_bridge.py')
     (plugin / 'scripts/run-bridge').write_text('exec python3 "$(dirname "$0")/../fake_bridge.py"\n')
+    video = base / 'synthetic.mp4'
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=160x90:d=1', '-an', '-c:v', 'mpeg4', str(video)], check=True, timeout=15)
     env = os.environ.copy()
+    env['DANKCHAT_TEST_VIDEO'] = str(video)
     artifacts = Path('/tmp/dankchat-ui-artifacts'); artifacts.mkdir(exist_ok=True)
     env['DANKCHAT_TEST_ARTIFACTS'] = str(artifacts)
     env['DANKCHAT_TEST_TRANSLATIONS'] = (repo / 'translations/de.json').read_text()
@@ -44,9 +47,15 @@ with tempfile.TemporaryDirectory(prefix='dankchat-ui-') as directory:
     try:
         time.sleep(2)
         for step in range(200 if '--service' in sys.argv else 100):
-            response = subprocess.run(['qs', '-p', str(base), 'ipc', 'call', 'test', 'advance'], env=env, capture_output=True, text=True, timeout=3)
+            try:
+                response = subprocess.run(['qs', '-p', str(base), 'ipc', 'call', 'test', 'advance'], env=env, capture_output=True, text=True, timeout=3)
+            except subprocess.TimeoutExpired:
+                print('TEST: IPC timeout at step', step + 1)
+                success = False
+                break
             if response.returncode or 'FAIL' in response.stdout:
                 print('TEST: IPC failed', response.stdout.strip())
+                success = False
                 break
             if 'PASS' in response.stdout:
                 success = True
@@ -57,8 +66,8 @@ with tempfile.TemporaryDirectory(prefix='dankchat-ui-') as directory:
     (Path('/tmp') / 'dankchat-isolated-ui.log').write_text(output)
     # Do not echo service logs or filesystem lists; report only test diagnostics.
     for line in output.splitlines():
-        if any(word in line for word in ('TEST: view failed', 'ChatView.qml:', 'MediaPreview.qml:', 'ReferenceError', 'TypeError', 'Unable to assign', 'Binding loop', 'crashed', 'Failed to load configuration')):
+        if any(word in line for word in ('TEST: view failed', 'ChatView.qml:', 'MediaPreview.qml:', 'ReferenceError', 'TypeError', 'Unable to assign', 'Binding loop', "Can't assign to existing role", 'crashed', 'Failed to load configuration')):
             print(line)
-    ok = success and 'crashed' not in output and 'ReferenceError' not in output and 'TypeError' not in output and 'Unable to assign' not in output
+    ok = success and 'crashed' not in output and 'ReferenceError' not in output and 'TypeError' not in output and 'Unable to assign' not in output and "Can't assign to existing role" not in output and 'Binding loop' not in output
     print('Isolated UI test:', 'PASS' if ok else 'FAIL')
     sys.exit(0 if ok else 1)

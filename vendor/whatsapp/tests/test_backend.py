@@ -550,6 +550,21 @@ class BackendTests(unittest.TestCase):
         self.assertEqual([value["id"] for value in values], ["t1", "t2"])
         self.assertNotIn("a1", [value["id"] for value in values])
 
+    def test_context_finds_old_message_and_exact_timestamp_tie(self):
+        with closing(sqlite3.connect(self.store / "wacli.db")) as connection, connection:
+            connection.executemany(
+                "INSERT INTO messages (chat_jid, msg_id, ts, text, from_me) VALUES (?, ?, ?, ?, 0)",
+                [("team@g.us", "new" + str(i), 100 + i, "newer") for i in range(180)])
+        self.assertNotIn("t2", [row["id"] for row in self.backend.messages("team@g.us")["messages"]])
+        rows = self.backend.messages("team@g.us", around_id="t2", limit=40)["messages"]
+        self.assertIn("t2", [row["id"] for row in rows])
+        self.assertLessEqual(len(rows), 40)
+        with closing(sqlite3.connect(self.store / "wacli.db")) as connection, connection:
+            connection.execute("UPDATE messages SET ts=20 WHERE chat_jid='team@g.us'")
+        self.assertEqual(self.backend.messages("team@g.us", around_id="t2", limit=1)["messages"][0]["id"], "t2")
+        with self.assertRaises(backend_module.WhatsAppError):
+            self.backend.messages("alex@s.whatsapp.net", around_id="t2")
+
     def test_message_search_and_media_metadata(self) -> None:
         values = self.backend.messages("team@g.us", "mock")["messages"]
         self.assertEqual(len(values), 1)

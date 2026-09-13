@@ -1,0 +1,13 @@
+{
+  "emoji_version": "17.0",
+  "cldr_release": "48",
+  "entries": 3953,
+  "sha256": {
+    "https://raw.githubusercontent.com/unicode-org/cldr/release-48/common/annotations/en.xml": "8511aadd046fdba2f0ffe590266ced8bbf48175ad139b2675d85d7141057b235",
+    "https://raw.githubusercontent.com/unicode-org/cldr/release-48/common/annotationsDerived/en.xml": "d76bd041c8c9e7b00b716aff8b7d9dbf509877010e191d5efd068be2553e066e",
+    "https://raw.githubusercontent.com/unicode-org/cldr/release-48/common/annotations/de.xml": "12eb92612539223d4dcfaec3c45437a31a82022b1c59160873fa4d4439dd7d07",
+    "https://raw.githubusercontent.com/unicode-org/cldr/release-48/common/annotationsDerived/de.xml": "c7511229fdfa1471cecba195ff4a094d70507a320e5364e0edc8ca5c72eeae09",
+    "https://www.unicode.org/Public/17.0.0/emoji/emoji-test.txt": "1d8a944f88d7952f7ef7c5167fef3c67995bcae24543949710231b03a201acda",
+    "https://www.unicode.org/license.txt": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96"
+  }
+}

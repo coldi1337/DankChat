@@ -2,11 +2,12 @@ import QtQuick
 import QtQuick.Controls.Basic as Controls
 import QtQuick.Layouts
 import QtQuick.Window
-import QtQuick.Dialogs
+import qs.Modals.FileBrowser
 import Quickshell
 import qs.Common
 import qs.Widgets
 import "linkify.js" as Links
+import "emoji-data.js" as Emojis
 
 Item {
     id: root
@@ -35,6 +36,7 @@ Item {
     }
     component ChatWheel: WheelHandler {
         required property var view
+        signal scrolled()
         target: null
         onWheel: event => {
             const delta = event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.angleDelta.y / 120 * 96;
@@ -43,6 +45,7 @@ Item {
             const low = view.originY;
             const high = low + Math.max(0, view.contentHeight - view.height);
             view.contentY = Math.max(low, Math.min(high, view.contentY - delta));
+            scrolled();
             event.accepted = true;
         }
     }
@@ -233,8 +236,21 @@ Item {
                     Layout.fillWidth: true
                     placeholderText: I18n.trFor("dankChat", "Search chats")
                     leftIconName: "search"
+                    showClearButton: true
                     text: root.service.query
                     onTextChanged: if (text !== root.service.query) root.service.query = text
+                }
+                DankButton {
+                    objectName: "unreadFilter"
+                    Layout.fillWidth: true
+                    buttonHeight: 34
+                    iconName: "mark_chat_unread"
+                    text: I18n.trFor("dankChat", "Unread") + " (" + root.service.unreadChatCount + ")"
+                    backgroundColor: root.service.unreadOnly ? Theme.primary : Theme.surfaceContainerHigh
+                    textColor: root.service.unreadOnly ? Theme.primaryText : Theme.surfaceText
+                    Accessible.checkable: true
+                    Accessible.checked: root.service.unreadOnly
+                    onClicked: root.service.unreadOnly = !root.service.unreadOnly
                 }
                 ListView {
                     id: chatList
@@ -289,6 +305,11 @@ Item {
                             padding: Theme.spacingXS
                             background: Rectangle { color: Theme.surfaceContainer; radius: Theme.cornerRadius; border.color: Theme.outline }
                             MenuEntry {
+                                text: I18n.trFor("dankChat", "Mark as read")
+                                enabled: !root.service.demo && !root.service.markingRead?.[chatRow.modelData.key]
+                                onTriggered: root.service.markChatRead(chatRow.modelData)
+                            }
+                            MenuEntry {
                                 text: chatRow.modelData.pinned ? I18n.trFor("dankChat", "Unpin chat") : I18n.trFor("dankChat", "Pin chat")
                                 enabled: !root.service.demo
                                 onTriggered: root.service.togglePin(chatRow.modelData)
@@ -299,7 +320,10 @@ Item {
                         anchors.centerIn: parent
                         width: parent.width - 16; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
                         visible: chatList.count === 0
-                        text: I18n.trFor("dankChat", "No chats yet. Link an account to get started.")
+                        text: root.service.query.trim().length > 0 ? I18n.trFor("dankChat", "No chats found.")
+                            : (root.service.statuses.telegram?.authorized || root.service.statuses.whatsapp?.authorized)
+                                ? (root.service.unreadOnly ? I18n.trFor("dankChat", "No unread chats.") : I18n.trFor("dankChat", "No chats available yet."))
+                                : I18n.trFor("dankChat", "No chats yet. Link an account to get started.")
                         color: Theme.surfaceVariantText
                     }
                 }
@@ -323,26 +347,81 @@ Item {
                 Rectangle { Layout.fillWidth: true; height: 1; color: Theme.outline; opacity: 0.25 }
                 ListView {
                     id: messageList
-                    ChatWheel { view: messageList }
+                    objectName: "messageList"
+                    ChatWheel { view: messageList; onScrolled: messageList.followTail = messageList.atYEnd }
                     Layout.fillWidth: true; Layout.fillHeight: true
                     clip: true; spacing: Theme.spacingS
-                    model: root.service.messages
+                    model: ListModel { id: messageRows; dynamicRoles: true }
+                    function syncMessages() {
+                        const incoming = root.service.messages;
+                        const key = root.service.selectedChat?.key || "";
+                        if (key !== displayedChat) messageRows.clear();
+                        for (let i = 0; i < incoming.length; i++) {
+                            const row = incoming[i];
+                            const signature = JSON.stringify(row);
+                            if (i < messageRows.count && messageRows.get(i).entry.id !== row.id) {
+                                let existing = -1;
+                                for (let j = i + 1; j < messageRows.count; j++) {
+                                    if (messageRows.get(j).entry.id === row.id) { existing = j; break; }
+                                }
+                                if (existing >= 0) messageRows.move(existing, i, 1);
+                                else messageRows.insert(i, {entry: row, signature: signature});
+                            }
+                            if (i >= messageRows.count) messageRows.append({entry: row, signature: signature});
+                            else if (messageRows.get(i).signature !== signature) {
+                                messageRows.setProperty(i, "entry", row);
+                                messageRows.setProperty(i, "signature", signature);
+                            }
+                        }
+                        if (messageRows.count > incoming.length) messageRows.remove(incoming.length, messageRows.count - incoming.length);
+                    }
+                    property string highlightedMessage: ""
+                    Timer { id: highlightTimer; interval: 1800; onTriggered: messageList.highlightedMessage = "" }
                     property bool followTail: true
                     property real savedScroll: 0
                     property string displayedChat: ""
+                    function settleScroll() {
+                        if (!followTail) return;
+                        positionViewAtEnd();
+                    }
+                    function openAtLatest() {
+                        followTail = true;
+                        highlightedMessage = "";
+                        Qt.callLater(settleScroll);
+                    }
+                    Component.onCompleted: { syncMessages(); displayedChat = root.service.selectedChat?.key || ""; openAtLatest(); }
+                    onVisibleChanged: if (visible) openAtLatest()
+                    onContentHeightChanged: if (followTail) Qt.callLater(settleScroll)
+                    onHeightChanged: if (followTail) Qt.callLater(settleScroll)
+                    onMovementStarted: followTail = false
+                    onMovementEnded: followTail = atYEnd
                     Connections {
                         target: root.service
                         ignoreUnknownSignals: true
+                        function onFocusMessageRequested(messageId) {
+                            Qt.callLater(() => {
+                                const index = root.service.messages.findIndex(message => message.id === messageId);
+                                if (index < 0) return;
+                                messageList.followTail = false;
+                                messageList.positionViewAtIndex(index, ListView.Center);
+                                messageList.highlightedMessage = messageId;
+                                highlightTimer.restart();
+                            });
+                        }
+                        function onSelectedChatChanged() { messageList.openAtLatest(); }
                         function onMessagesReplacing() {
-                            messageList.followTail = messageList.atYEnd;
+                            messageList.followTail = messageList.followTail || messageList.count === 0 || messageList.atYEnd;
                             messageList.savedScroll = messageList.contentY;
                         }
                         function onMessagesChanged() {
                             const key = root.service.selectedChat?.key || "";
                             const changedChat = key !== messageList.displayedChat;
+                            messageList.syncMessages();
                             messageList.displayedChat = key;
+                            if (changedChat || root.service.messages.length === 0) messageList.openAtLatest();
                             Qt.callLater(() => {
-                                if (changedChat || messageList.followTail) messageList.positionViewAtEnd();
+                                messageList.forceLayout();
+                                if (messageList.followTail) messageList.settleScroll();
                                 else messageList.contentY = messageList.savedScroll;
                             });
                         }
@@ -353,15 +432,16 @@ Item {
                         anchors.bottom: parent.bottom
                         anchors.margins: Theme.spacingS
                         z: 20
-                        visible: messageList.count > 0 && !messageList.atYEnd
+                        visible: messageList.count > 0 && (!!root.service.historyContext || !messageList.atYEnd)
                         iconName: "arrow_downward"
                         tooltipText: I18n.trFor("dankChat", "Jump to latest message")
-                        onClicked: { messageList.followTail = true; messageList.positionViewAtEnd(); }
+                        onClicked: { messageList.openAtLatest(); root.service.showLatest(); }
                         Rectangle { anchors.fill: parent; radius: width / 2; color: Theme.surfaceContainerHigh; border.color: Theme.outline; z: -1 }
                     }
                     delegate: Item {
                         id: messageRow
-                        required property var modelData
+                        required property var entry
+                        readonly property var modelData: entry
                         width: messageList.width
                         height: bubble.height + 4
                         Rectangle {
@@ -375,14 +455,26 @@ Item {
                             anchors.left: messageRow.modelData.out ? undefined : parent.left
                             radius: Theme.cornerRadius
                             color: messageRow.modelData.out ? Theme.primaryContainer : Theme.surfaceContainerHigh
-                            border.width: messageRow.modelData.out ? 0 : 1
-                            border.color: Theme.outline
+                            border.width: messageList.highlightedMessage === messageRow.modelData.id ? 2 : messageRow.modelData.out ? 0 : 1
+                            border.color: messageList.highlightedMessage === messageRow.modelData.id ? bubble.readableAccent : Theme.outline
                             ColumnLayout {
                                 id: bubbleContent
                                 anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                                 anchors.margins: Theme.spacingS; spacing: Theme.spacingXS
                                 Label { Layout.fillWidth: true; wrapMode: Text.NoWrap; elide: Text.ElideRight; visible: !messageRow.modelData.out && !!messageRow.modelData.sender; text: messageRow.modelData.sender; color: bubble.readableAccent; font.pixelSize: Theme.fontSizeSmall }
-                                Label { Layout.fillWidth: true; visible: !!messageRow.modelData.replyText; text: "↳ " + messageRow.modelData.replyText; maximumLineCount: 2; elide: Text.ElideRight; wrapMode: Text.Wrap; color: bubble.readableSecondary; font.pixelSize: Theme.fontSizeSmall }
+                                Label {
+                                    Layout.fillWidth: true
+                                    visible: !!messageRow.modelData.replyText || !!messageRow.modelData.replyId
+                                    text: "↳ " + (messageRow.modelData.replyText || I18n.trFor("dankChat", "Original message"))
+                                    maximumLineCount: 2; elide: Text.ElideRight; wrapMode: Text.Wrap
+                                    color: bubble.readableSecondary; font.pixelSize: Theme.fontSizeSmall
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        enabled: !!messageRow.modelData.replyId
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.service.jumpToReply(messageRow.modelData.replyId)
+                                    }
+                                }
                                 Loader {
                                     id: mediaPreviewLoader
                                     Layout.fillWidth: true
@@ -403,7 +495,7 @@ Item {
                                 Controls.TextArea {
                                     id: messageText
                                     Layout.fillWidth: true
-                                    visible: text.length > 0
+                                    visible: !!messageRow.modelData.text
                                     text: Links.render(messageRow.modelData.text, bubble.readableAccent)
                                     textFormat: TextEdit.RichText
                                     onLinkActivated: link => { if (Links.isWebUrl(link)) Qt.openUrlExternally(link); }
@@ -426,6 +518,19 @@ Item {
                                         iconColor: bubble.readableText
                                         tooltipText: I18n.trFor("dankChat", "Open media")
                                         onClicked: Qt.openUrlExternally(Links.localFileUrl(messageRow.modelData.mediaPath))
+                                    }
+                                    Action {
+                                        visible: !!messageRow.modelData.mediaPath
+                                        enabled: !root.service.demo
+                                        iconName: "download"; width: 26; height: 26; iconSize: 16
+                                        iconColor: bubble.readableText
+                                        tooltipText: I18n.trFor("dankChat", "Save media as…")
+                                        onClicked: {
+                                            root.exportMessage = messageRow.modelData;
+                                            root.exportChat = root.service.selectedChat;
+                                            root.savingMedia = true;
+                                            fileDialog.open();
+                                        }
                                     }
                                     Item { Layout.fillWidth: true }
                                     Label { text: messageRow.modelData.time || (messageRow.modelData.timestamp ? Qt.formatDateTime(new Date(messageRow.modelData.timestamp * 1000), "hh:mm") : ""); color: bubble.readableSecondary; font.pixelSize: Theme.fontSizeSmall }
@@ -462,12 +567,20 @@ Item {
                     border.color: composer.activeFocus ? Theme.primary : Theme.outline
                     RowLayout {
                         anchors.fill: parent; anchors.margins: 6; spacing: 4
-                        Action { iconName: "attach_file"; enabled: !root.service.demo && !root.service.writing; onClicked: { root.attachmentChatKey = root.service.selectedChat.key; fileDialog.open(); } }
+                        Action { iconName: "attach_file"; enabled: !root.service.demo && !root.service.writing; onClicked: { root.attachmentChatKey = root.service.selectedChat.key; root.savingMedia = false; fileDialog.open(); } }
+                        Action {
+                            iconName: "sentiment_satisfied"
+                            tooltipText: I18n.trFor("dankChat", "Emoji")
+                            onClicked: {
+                                root.openEmojiPicker();
+                            }
+                        }
                         Controls.ScrollView {
                             id: composerScroll
                             Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                             Controls.TextArea {
                                 id: composer
+                                objectName: "messageComposer"
                                 width: composerScroll.availableWidth
                                 height: Math.max(composerScroll.availableHeight, implicitHeight)
                                 text: root.service.draft
@@ -495,14 +608,154 @@ Item {
             }
         }
     }
-    FileDialog {
+    function openEmojiPicker() {
+        emojiChatKey = service.selectedChat?.key || "";
+        emojiSelectionStart = composer.selectionStart;
+        emojiSelectionEnd = composer.selectionEnd;
+        emojiSearch.text = "";
+        emojiPicker.category = -1;
+        emojiPicker.open();
+        emojiSearch.forceActiveFocus();
+    }
+    function emojiLayoutStatus() {
+        return JSON.stringify({width: emojiGrid.width, height: emojiGrid.height, count: emojiGrid.count, firstWidth: emojiGrid.itemAtIndex(0)?.width, firstHeight: emojiGrid.itemAtIndex(0)?.height, visible: emojiGrid.itemAtIndex(0)?.visible, text: emojiGrid.itemAtIndex(0)?.contentItem.text, labelWidth: emojiGrid.itemAtIndex(0)?.contentItem.width, labelHeight: emojiGrid.itemAtIndex(0)?.contentItem.height, padding: emojiGrid.itemAtIndex(0)?.padding, labelOpacity: emojiGrid.itemAtIndex(0)?.contentItem.opacity});
+    }
+    function previewEmojiSearch(query) { emojiSearch.text = query; }
+    function previewEmojiImage(path) { emojiPicker.contentItem.grabToImage(result => result.saveToFile(path)); }
+    function insertEmoji(value) {
+        if (service.selectedChat?.key === emojiChatKey) {
+            composer.remove(emojiSelectionStart, emojiSelectionEnd);
+            composer.insert(emojiSelectionStart, value);
+            composer.cursorPosition = emojiSelectionStart + value.length;
+        }
+        emojiPicker.close();
+        composer.forceActiveFocus();
+    }
+    DankTooltipV2 { id: emojiTooltip }
+    property string emojiChatKey: ""
+    property int emojiSelectionStart: 0
+    property int emojiSelectionEnd: 0
+    Controls.Popup {
+        id: emojiPicker
+        objectName: "emojiPicker"
+        onClosed: emojiTooltip.hide()
+        width: Math.min(root.width - 24, 320)
+        height: Math.min(root.height - 24, 440)
+        x: Math.max(12, root.width - width - 12)
+        y: Math.max(12, root.height - height - 70)
+        focus: true
+        popupType: Controls.Popup.Item
+        property int category: -1
+        readonly property var categories: [
+            ["✨", "All emoji"], ["😀", "Smileys & Emotion"], ["👋", "People & Body"],
+            ["🏽", "Component"], ["🐻", "Animals & Nature"], ["🍔", "Food & Drink"],
+            ["🚗", "Travel & Places"], ["⚽", "Activities"], ["💡", "Objects"],
+            ["❤️", "Symbols"], ["🏳️", "Flags"]
+        ]
+        background: Rectangle { color: Theme.surfaceContainer; radius: Theme.cornerRadius; border.color: Theme.outline }
+        contentItem: ColumnLayout {
+            RowLayout {
+                Layout.fillWidth: true
+                DankTextField {
+                    id: emojiSearch
+                    objectName: "emojiSearch"
+                    Layout.fillWidth: true
+                    placeholderText: I18n.trFor("dankChat", "Search emoji…")
+                    hidePlaceholderOnFocus: false
+                    leftIconName: "search"
+                    showClearButton: true
+                }
+                Action { iconName: "close"; onClicked: emojiPicker.close() }
+            }
+            GridLayout {
+                Layout.fillWidth: true
+                columns: 6
+                rowSpacing: 4; columnSpacing: 4
+                Repeater {
+                    model: emojiPicker.categories
+                    delegate: Controls.ItemDelegate {
+                        id: categoryButton
+                        required property var modelData
+                        readonly property int categoryId: Emojis.groups.indexOf(modelData[1])
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.preferredWidth: 40
+                        Layout.preferredHeight: 32
+                        padding: 0
+                        Accessible.name: I18n.trFor("dankChat", modelData[1])
+                        contentItem: Label { text: categoryButton.modelData[0]; font.pixelSize: 18; elide: Text.ElideNone; wrapMode: Text.NoWrap; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                        background: Rectangle { radius: Theme.cornerRadius; color: emojiPicker.category === categoryButton.categoryId ? Theme.primaryContainer : Theme.surfaceContainerHigh }
+                        HoverHandler { onHoveredChanged: hovered ? emojiTooltip.show(I18n.trFor("dankChat", modelData[1]), parent, 0, 0, "top") : emojiTooltip.hide() }
+                        onClicked: { emojiPicker.category = categoryId; emojiSearch.text = ""; }
+                    }
+                }
+            }
+            GridView {
+                id: emojiGrid
+                Layout.fillWidth: true; Layout.fillHeight: true
+                clip: true
+                cellWidth: width / 7; cellHeight: 40
+                model: emojiPicker.visible ? Emojis.search(emojiSearch.text, emojiPicker.category) : []
+                onModelChanged: positionViewAtBeginning()
+                boundsBehavior: Flickable.StopAtBounds
+                ChatWheel { view: emojiGrid }
+                Controls.ScrollBar.vertical: Controls.ScrollBar {
+                    policy: Controls.ScrollBar.AsNeeded
+                    contentItem: Rectangle { implicitWidth: 4; radius: 2; color: Theme.outline }
+                }
+                Label {
+                    anchors.centerIn: parent
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    visible: emojiGrid.count === 0
+                    text: I18n.trFor("dankChat", "No emoji found.")
+                    color: Theme.surfaceVariantText
+                }
+                delegate: Controls.ItemDelegate {
+                    required property var modelData
+                    width: GridView.view.cellWidth; height: 40
+                    padding: 0
+                    leftPadding: 0; rightPadding: 0; topPadding: 0; bottomPadding: 0
+                    background: Rectangle { radius: Theme.cornerRadius; color: parent.hovered || parent.activeFocus ? Theme.surfaceContainerHigh : "transparent" }
+                    contentItem: Label { text: modelData[0]; font.pixelSize: 24; elide: Text.ElideNone; wrapMode: Text.NoWrap; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    HoverHandler { onHoveredChanged: hovered ? emojiTooltip.show(modelData[2], parent, 0, 0, "top") : emojiTooltip.hide() }
+                    onClicked: { emojiTooltip.hide(); root.insertEmoji(modelData[0]); }
+                }
+            }
+        }
+    }
+    property bool savingMedia: false
+    property var exportMessage: null
+    property var exportChat: null
+    Controls.Popup {
         id: fileDialog
-        title: I18n.trFor("dankChat", "Choose an attachment to send")
-        fileMode: FileDialog.OpenFile
-        options: FileDialog.DontUseNativeDialog
-        onAccepted: {
-            attachmentPath = decodeURIComponent(selectedFile.toString().replace(/^file:\/\//, ""));
-            attachmentConfirm.open();
+        anchors.centerIn: parent
+        width: Math.min(root.width - 24, 860)
+        height: root.height - 24
+        modal: true
+        focus: true
+        popupType: Controls.Popup.Item
+        padding: 0
+        background: Rectangle { color: Theme.surfaceContainer; radius: Theme.cornerRadius; border.color: Theme.outline }
+        contentItem: Loader {
+            active: fileDialog.visible
+            sourceComponent: FileBrowserContent {
+                browserTitle: root.savingMedia ? I18n.trFor("dankChat", "Save media as…") : I18n.trFor("dankChat", "Choose an attachment to send")
+                browserType: root.savingMedia ? "dankchat_export" : "dankchat_attachment"
+                saveMode: root.savingMedia
+                defaultFileName: root.savingMedia ? (root.exportMessage?.filename || root.exportMessage?.mediaPath?.split("/").pop() || "media") : ""
+                fileExtensions: ["*"]
+                showSidebar: width >= 620
+                Component.onCompleted: { initialize(); forceActiveFocus(); }
+                onFileSelected: path => {
+                    const value = path.toString();
+                    const selectedPath = value.startsWith("file://") ? decodeURIComponent(value.slice(7)) : value;
+                    fileDialog.close();
+                    if (root.savingMedia) root.service.saveMedia(root.exportChat, root.exportMessage, selectedPath);
+                    else { root.attachmentPath = selectedPath; attachmentConfirm.open(); }
+                }
+                onCloseRequested: fileDialog.close()
+            }
         }
     }
     property string attachmentPath: ""
@@ -593,6 +846,7 @@ Item {
         anchors.centerIn: parent
         width: Math.min(root.width - 32, 400)
         modal: true
+        popupType: Controls.Popup.Item
         title: I18n.trFor("dankChat", "Send attachment")
         background: Rectangle { color: Theme.surfaceContainer; radius: Theme.cornerRadius; border.color: Theme.outline }
         header: Label { text: attachmentConfirm.title; padding: Theme.spacingM; font.weight: Font.Medium }

@@ -2346,7 +2346,7 @@ class Backend:
         return {"ok": True, "kind": "sync-mode", "account": account.name,
                 "online": bool(online)}
 
-    def messages(self, jid: str, query: str = "", limit: int = 160) -> dict[str, Any]:
+    def messages(self, jid: str, query: str = "", limit: int = 160, around_id: str = "") -> dict[str, Any]:
         chat = self._chat(jid)
         sent_media_hints = self._sent_media_hints()
         sent_reply_hints = self._sent_reply_hints()
@@ -2365,6 +2365,13 @@ class Backend:
         parameters.append(limit)
         try:
             with closing(self._connect()) as connection:
+                order_by = "base.ts DESC, base.rowid DESC"
+                if around_id:
+                    target = connection.execute("SELECT ts FROM messages WHERE chat_jid = ? AND msg_id = ? AND deleted_at IS NULL", [chat["jid"], around_id]).fetchone()
+                    if target is None:
+                        raise WhatsAppError("The original message is not available in the local history.")
+                    order_by = "CASE WHEN base.msg_id = ? THEN 0 ELSE 1 END, ABS(base.ts - ?) ASC, base.ts DESC, base.rowid DESC"
+                    parameters[-1:-1] = [around_id, target["ts"]]
                 rows = connection.execute(
                     f"""SELECT base.msg_id, base.sender_jid, base.sender_name,
                       base.ts, base.from_me, base.text, base.display_text,
@@ -2382,9 +2389,11 @@ class Backend:
                       ON location.chat_jid = base.chat_jid
                         AND location.msg_id = base.msg_id
                     WHERE {where}
-                    ORDER BY base.ts DESC, base.rowid DESC LIMIT ?""",
+                    ORDER BY {order_by} LIMIT ?""",
                     parameters,
                 ).fetchall()
+                if around_id:
+                    rows = sorted(rows, key=lambda row: row["ts"], reverse=True)
                 message_ids = [str(row["msg_id"]) for row in rows]
                 quoted_by_message = {}
                 for row in rows:

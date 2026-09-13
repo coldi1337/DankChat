@@ -30,3 +30,14 @@ It is used for development validation, not included as an application service.
 
 Runtime dependencies are installed separately: Telethon, qrcode, Pillow, and
 wacli. Their licenses continue to apply. DankChat does not bundle a wacli binary.
+
+## Unicode emoji data
+
+`emoji-data.js` is generated from Unicode Emoji 17.0 `emoji-test.txt` and
+Unicode CLDR 48 English/German annotations (including derived annotations).
+Copyright © Unicode, Inc. Distributed under the
+[Unicode License v3](data/unicode/LICENSE), retained in full.
+Sources and SHA-256 hashes are recorded in
+[data/unicode/sources.json](data/unicode/sources.json).
+Run `python3 scripts/update-emoji-data` to regenerate; runtime browsing and
+searching are offline and do not contact Unicode or any search service.

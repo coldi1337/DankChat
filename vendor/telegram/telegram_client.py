@@ -523,13 +523,15 @@ class TelegramBackend:
         except Exception:
             return []
 
-    async def get_messages_for_chat(self, chat_id, limit=50, topic_id=None):
+    async def get_messages_for_chat(self, chat_id, limit=50, topic_id=None, around_id=None):
         if not await self.client.is_user_authorized():
             return []
         try:
             cid = int(chat_id)
             entity = await self.client.get_entity(cid)
             kwargs = {"limit": limit}
+            if around_id is not None:
+                kwargs.update(offset_id=int(around_id) + 1, add_offset=-(limit // 2))
             if topic_id:
                 kwargs["reply_to"] = int(topic_id)
             messages = await self.client.get_messages(entity, **kwargs)

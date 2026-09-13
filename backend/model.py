@@ -50,6 +50,7 @@ def message(provider, raw):
         "mediaThumb": str(raw.get("media_thumb", "")),
         "mimeType": str(raw.get("mime_type", "")),
         "filename": str(raw.get("filename", "") or (raw.get("media_info") or {}).get("file_name", "")),
+        "replyId": str(raw.get("reply_to_msg_id" if telegram else "quoted_id", "") or ""),
         "replyText": str(raw.get("reply_to_text" if telegram else "quoted_text", "")),
         "edited": bool(raw.get("is_edited" if telegram else "edited", False)),
         "deliveryPartial": bool(raw.get("delivery_partial", False)),

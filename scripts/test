@@ -12,4 +12,5 @@ done
 qmltest_bin=$(command -v qmltestrunner || true)
 if [ -z "$qmltest_bin" ]; then qmltest_bin=/usr/lib/qt6/bin/qmltestrunner; fi
 QT_QPA_PLATFORM=offscreen "$qmltest_bin" -input tests/tst_links.qml
+QT_QPA_PLATFORM=offscreen "$qmltest_bin" -input tests/tst_emoji.qml
 "$project_dir/.venv/bin/python3" -c 'import json,jsonschema;jsonschema.validate(json.load(open("plugin.json")),json.load(open("tests/plugin-schema.json")))'

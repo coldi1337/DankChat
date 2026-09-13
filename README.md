@@ -6,17 +6,30 @@ resizable window. Both services share a WhatsApp-inspired layout and DMS styling
 There is no Electron runtime or embedded browser.
 
 **Development version. Not submitted to the DMS registry.** Real-account
-acceptance testing is still required. The current implementation is the first
+acceptance testing is still required. A recurring whole-shell crash remains under
+investigation; the local development plugin is enabled for user-triggered reproduction. The current implementation is the first
 shared client, not full feature parity with both upstream applications.
 
 ## Implemented
 
 - A composite DMS plugin with one background owner and widgets on multiple bars.
 - One chat list, with All / Telegram / WhatsApp filters and local chat search.
+  The **Unread** toggle shows only unread chats; its count is the number of
+  unread chats matching the current provider and search. Click again to show all
+  matching chats. Marking a chat read removes it from this filtered list without
+  closing the open conversation.
 - Text history, text sending, replies, one-file attachment sending, and local
-  on-demand media downloads, inline images/stickers, and video/audio playback.
+  automatic media loading in the open chat, inline images/stickers, and video/audio playback.
 - Clickable web links and distinct incoming/outgoing message bubbles.
+- A themed emoji picker beside the attachment button with the complete Unicode
+  Emoji 17.0 catalog (3,953 entries, including skin tones and compound sequences).
+  Search German/English names and keywords offline, or browse categories.
+  Inserts at the cursor or replaces selected text. Glyph rendering depends on
+  the installed emoji font; newer emoji may require a font update.
 - Pinned chats first, with Pin/Unpin in the chat context menu.
+- Right-click a chat and choose **Mark as read** to explicitly update its read
+  state through Telegram or WhatsApp. WhatsApp synchronizes the chat read state;
+  this is separate from sender-visible per-message read receipts.
 - A nonmodal dropdown that allows interacting with other windows.
 - Chat selection and separate in-memory drafts survive switching between the
   dropdown and app window. Drafts do not yet survive a shell restart.
@@ -34,7 +47,7 @@ shared client, not full feature parity with both upstream applications.
 - Telegram: Telethon, qrcode, Pillow (installed into a project virtualenv).
 - WhatsApp: **wacli 0.17.1** at `~/.local/bin/wacli`, systemd user services.
 - Both QR login flows use qrcode and Pillow from the project virtualenv.
-- Qt Quick Dialogs for the non-native attachment picker (GTK/GVFS is bypassed); a desktop media viewer for
+- The built-in DMS file browser for attachments and media export; a desktop media viewer for
   external opening. Qt Multimedia and image format plugins enable inline media
   (Arch: `qt6-multimedia-ffmpeg qt6-imageformats`). Animated Telegram vector
   stickers are not rendered inline; unsupported files can open externally.
@@ -75,6 +88,7 @@ executable at `~/.local/bin/wacli`.
 - Right-click the widget: open the same conversation in a normal, resizable, tiling-capable app window. The desktop launcher opens this window too.
 - Open-in-new button: expand the current dropdown conversation into the app.
 - Enter: send; Shift+Enter: newline.
+- Click a quoted reply to jump to its original message. Older originals open a small history context; the down-arrow returns to the latest messages. Deleted or unsynchronized originals may be unavailable.
 - Images: click to enlarge, wheel or +/− to zoom, drag to pan, double-click to reset/toggle zoom.
 - Videos: expand button opens a large player inside the current window; playback continues.
 - Accounts button: link Telegram or WhatsApp directly using the displayed QR code. Complete linking on your phone; no terminal is needed.
@@ -122,9 +136,13 @@ means at least one participant has confirmed it; the tooltip states this.
 Telegram uses its server-provided sent/read status. Receiving these updates does
 not enable outgoing read receipts.
 
-The attachment picker explicitly avoids the native GTK dialog after a local
-GTK/GVFS crash. Closing it cancels selection; choosing a file still requires the
-separate Send confirmation.
+Attachment selection and **Save media as…** use the DMS file browser embedded
+in the chat window, including DMS colors and overwrite confirmation. This avoids
+the native GTK dialog after a local GTK/GVFS crash. Closing it cancels selection; choosing an attachment still requires the separate
+Send confirmation. The download icon on loaded media saves a copy to your chosen
+location. Media in the current chat loads automatically, newest first, one file
+at a time. Closing both surfaces stops further automatic downloads; failed
+downloads can be retried manually. The search field offers an X to clear its filter.
 
 ## Current limits / release gate
 

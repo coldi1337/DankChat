@@ -4,13 +4,13 @@ Development environment: Arch Linux, DMS 1.6.1, Hyprland 0.56.2, Python 3.14.
 
 ## Automated
 
-- 23 DankChat tests pass: account/provider identity separation, literal text,
+- 26 DankChat tests pass: account/provider identity separation, literal text,
   normalization, notification counts, disabled providers, recipient validation,
   no automatic retry, disconnect lifecycle, message bounds, read-receipt
   separation, a real stdio subprocess using temporary private directories,
   QR expiry/recreation, password-required handling, QR cleanup, chronological
   message ordering, Telegram chat timestamps, and pinned chat normalization.
-- 151 retained upstream backend/asset tests pass.
+- 152 retained upstream backend/asset tests pass.
 - One upstream test is skipped: it inspects Omarchy's installer and release
   scripts, which DankChat does not ship.
 - DMS plugin manifest schema passes.
@@ -81,3 +81,117 @@ receipt acceptance still require user action; existing sessions were not revoked
 After the isolated checks passed, DankChat was reloaded into DMS and re-enabled.
 The bridge reported both existing sessions authorized, with no pending requests.
 No real messages were sent and no account was logged out during validation.
+
+Follow-up: the standard Qt picker was replaced by DMS FileBrowserContent inside
+a themed popup. Isolated UI coverage includes attachment selection and save-mode
+opening/cancellation. The fake backend exercises automatic media loading and
+rejects duplicate downloads; export tests verify exact provider/message lookup,
+private atomic copies, overwrite behavior and invalid destinations.
+
+Reply navigation preserves provider reply IDs and loads bounded context for older
+messages. A backend regression covers messages outside the latest page, timestamp
+ties and rejection of IDs belonging to another chat. Search misses now have a
+separate empty state from unlinked accounts.
+
+Current status: a subsequent live reload crashed the whole DMS process again
+(SIGSEGV in Qt QML property lookup/binding evaluation, 2026-09-13 04:51 CEST).
+DankChat is disabled again; the bar is running. The earlier GTK/GVFS crash and
+this QML stack are distinct observations. Clearing the QML disk cache did not
+establish a fix. No further live-shell reload tests are authorized by our current
+testing plan. Isolated service recreation passes but does not reproduce the
+actual-host failure. Release and registry submission remain blocked on stability.
+
+The themed emoji picker uses an in-scene Popup.Item. Isolated UI checks exercise
+opening it during narrow/wide layout changes, selection replacement (including
+variation-selector emoji), insertion at the cursor with UTF-16 cursor advancement,
+and rejecting insertion after switching chats. These tests use synthetic drafts
+and never send messages. The picker contains a curated set of common emoji;
+emoji search and skin-tone selection are not implemented.
+
+The user subsequently requested re-enabling DankChat to reproduce the crash;
+both account bridges and the bar were running after activation. Emoji rendering
+was then corrected: default ItemDelegate padding left too little text space in
+40-pixel cells, hiding the emoji despite a populated model. Explicit zero padding
+and unelided single-line labels restore the grid. An isolated regression now checks
+actual delegate text space, and its synthetic popup render was visually inspected.
+
+Chat opening now retains the request to scroll to the latest message across the
+empty/loading state and deferred ListView layout. Content-height changes keep the
+view at the end while following new messages. Wheel/drag scrolling and quoted
+message navigation stop following. Isolated UI regressions cover delayed 80-message
+loads, chat switching, reopening the same chat, late content growth, and preserving
+the position while reading older messages during refresh.
+
+The curated emoji subset is superseded by the complete Unicode Emoji 17.0
+catalog: 3,953 fully-qualified/component entries, with CLDR 48 English/German
+search annotations and retained Unicode licensing. Qt tests verify catalog
+uniqueness, Emoji 17 coverage, compound families, skin tones, flags, bilingual
+case/accent-insensitive keyword searches, empty results and category filtering.
+The isolated UI verifies the actual German search result for Austria, no-result
+state, clearing/reopening to the full catalog and delegate rendering. Category
+buttons and the full scrolling grid were visually checked using synthetic data.
+
+Explicit “Mark as read” is available in each chat's context menu. Provider-mocked
+tests verify Telegram's mark_read command and WhatsApp's server chat_action(read),
+including failure propagation and account routing. WhatsApp does not substitute
+local notification acknowledgement for this explicit action. The UI suppresses
+duplicate requests and only clears the unread count after success. No real chat
+was marked read during agent validation; cross-device acceptance remains manual.
+
+The unread-only chat filter composes with provider selection and trimmed local
+search; its badge counts matching unread chats, not individual messages. Isolated
+service checks use 240 synthetic chats to verify the unread subset, provider/search
+intersection, zero results and clearing the toggle. UI checks cover the button at
+narrow/wide sizes and stock light/dark themes, including larger German labels.
+
+A last-message video regression uses an ffmpeg-generated synthetic MP4 (ffmpeg
+is required for `scripts/test-ui`). Replacing the array-backed view model after a
+status update destroyed and recreated the player; the regression failed before
+incremental ListModel synchronization and passes afterward. The UI now updates
+rows by message ID, preserving unrelated delegates and players. Repeated loading
+of the same media URL is also suppressed, and player activation no longer follows
+inherited item visibility. Tail scrolling avoids forcing layout from every
+content-height notification. The regression checks player identity and stable
+bottom scroll after another message changes; existing delayed-load, chat-switch,
+manual-scroll and emoji checks remain enabled. Real provider/video acceptance
+still requires reproducing the user's specific chat after installation.
+
+The incremental message model uses dynamic roles to preserve message maps across
+append/update operations. A fixed-role prototype produced List/VariantMap type
+warnings and failed the service stress check; that prototype was not installed
+in the live shell. The harness now fails on role-assignment warnings and binding
+loops, reports IPC timeouts cleanly, and uses a valid synthetic PNG. Final UI and
+200-step service tests both passed, including changes to the video row itself.
+
+## Final automated pass — 2026-09-13
+
+- `bash scripts/test`: 29 own Python tests passed; 153 retained WhatsApp tests
+  ran (152 passed, one intentionally skipped upstream installer test); link and
+  emoji QtTest suites passed (7 and 5 results including setup/cleanup); all six
+  QML components parsed; plugin manifest schema passed.
+- `python3 scripts/test-ui`: passed the final UI, translation, picker, search,
+  scroll and last-message-video regressions. The video retains its player and
+  visible position during updates to another row and to its own status.
+- `python3 scripts/test-ui --service`: passed the 200-step synthetic service run,
+  including recreation, filters, automatic downloads and older-reply context.
+- `git diff --check`: clean.
+
+Telegram's PINNED_DIALOGS_TOO_MUCH now produces an actionable localized message:
+5 pinned chats in the main list without Premium, 10 with Premium; unpin another
+chat first. Only this RPC exception is mapped to the limit explanation; network
+errors still propagate, and unpinning remains possible. The error class was also
+verified against the installed Telethon dependency. Sources:
+https://core.telegram.org/method/messages.toggleDialogPin and
+https://telegram.org/faq_premium.
+
+The final checks also corrected the DMS translation table shape for newer labels
+and a remaining empty-caption layout bug: Qt RichText returns an HTML document
+for an empty TextArea, so visibility must use the original message text. Stored
+row signatures avoid updating identical message maps just because Qt enumerates
+their keys in a different order. The video test measures visible position rather
+than absolute contentY, which can change with ListView origin estimates.
+
+These are automated and isolated results. No agent test sent real messages,
+marked real chats read, changed real pins, or logged out either account. Earlier
+whole-shell crashes remain a release qualification concern; this pass does not
+prove they cannot recur. The repository has not been submitted to the registry.

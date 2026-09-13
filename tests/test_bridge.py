@@ -6,11 +6,12 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
-from bridge import Bridge, ProviderError, Telegram
+from bridge import Bridge, ProviderError, Telegram, WhatsApp
 from model import chat, key, message, messages
 
 
@@ -46,9 +47,10 @@ class ModelTests(unittest.TestCase):
         self.assertTrue(chat("whatsapp", {"jid": "synthetic", "pinned": 1})["pinned"])
 
     def test_message_media_and_reply_are_shared(self):
-        tg = message("telegram", {"id": 4, "text": "hello", "out": True, "media_type": "photo", "media_path": "/tmp/demo.png", "reply_to_text": "previous"})
-        wa = message("whatsapp", {"id": "4", "text": "hello", "from_me": True, "media_type": "photo", "local_path": "/tmp/demo.png", "quoted_text": "previous"})
+        tg = message("telegram", {"id": 4, "text": "hello", "out": True, "media_type": "photo", "media_path": "/tmp/demo.png", "reply_to_text": "previous", "reply_to_msg_id": "original"})
+        wa = message("whatsapp", {"id": "4", "text": "hello", "from_me": True, "media_type": "photo", "local_path": "/tmp/demo.png", "quoted_text": "previous", "quoted_id": "original"})
         self.assertEqual(tg, wa)
+        self.assertEqual(tg["replyId"], "original")
 
 
 class RoutingTests(unittest.IsolatedAsyncioTestCase):
@@ -64,7 +66,7 @@ class RoutingTests(unittest.IsolatedAsyncioTestCase):
         self.provider.call.assert_not_called()
 
     async def test_wrong_provider_rejected_for_read_and_write(self):
-        for action in ("messages", "send", "file", "read", "pin", "download"):
+        for action in ("messages", "send", "file", "read", "pin", "download", "export", "context"):
             with self.assertRaises(ProviderError):
                 await self.bridge.dispatch({"provider": "telegram", "action": action,
                     "chat": {"provider": "whatsapp", "id": "synthetic"}, "text": "hello"})
@@ -98,6 +100,54 @@ class RoutingTests(unittest.IsolatedAsyncioTestCase):
         provider.daemon.execute_command.return_value = {"success": True, "messages": []}
         await provider.call("messages", {"chat": {"id": "123"}})
         provider.daemon.execute_command.assert_awaited_once_with({"action": "messages", "chat_id": "123", "limit": 100})
+
+    async def test_explicit_telegram_mark_read(self):
+        provider = Telegram()
+        provider.connect = AsyncMock()
+        provider.daemon = AsyncMock()
+        provider.daemon.client.is_user_authorized.return_value = True
+        provider.daemon.dialogs_cache = [{"id": 123}]
+        provider.daemon.execute_command.return_value = {"success": True}
+        self.assertTrue((await provider.call("read", {"chat": {"id": "123"}}))["ok"])
+        provider.daemon.execute_command.assert_awaited_once_with({"action": "mark_read", "chat_id": "123"})
+
+    async def test_explicit_whatsapp_read_uses_server_chat_action(self):
+        provider = WhatsApp()
+        backend = Mock()
+        provider.backend = Mock(return_value=backend)
+        backend.chat_action.return_value = {"ok": True}
+        self.assertTrue((await provider.call("read", {"chat": {"id": "synthetic", "account": "one"}}))["ok"])
+        provider.backend.assert_called_once_with("one")
+        backend.chat_action.assert_called_once_with("synthetic", "read")
+        backend.acknowledge_notifications.assert_not_called()
+        backend.chat_action.return_value = {"ok": False}
+        with self.assertRaises(ProviderError):
+            await provider.call("read", {"chat": {"id": "synthetic"}})
+
+    async def test_telegram_pin_limit_is_specific_and_other_errors_propagate(self):
+        class PinnedDialogsTooMuchError(Exception):
+            pass
+        provider = Telegram()
+        provider.connect = AsyncMock()
+        client = AsyncMock()
+        client.is_user_authorized.return_value = True
+        provider.daemon = SimpleNamespace(client=client, dialogs_cache=[{"id": 123}])
+        request = Mock()
+        modules = {
+            "telethon.tl": SimpleNamespace(functions=SimpleNamespace(messages=SimpleNamespace(ToggleDialogPinRequest=request)), types=SimpleNamespace(InputDialogPeer=lambda peer: peer)),
+            "telethon.errors": SimpleNamespace(PinnedDialogsTooMuchError=PinnedDialogsTooMuchError),
+        }
+        with patch.dict(sys.modules, modules):
+            client.side_effect = PinnedDialogsTooMuchError()
+            with self.assertRaisesRegex(ProviderError, "5 pinned chats without Premium"):
+                await provider.call("pin", {"chat": {"id": "123"}, "pinned": True})
+            self.assertEqual(client.await_count, 1)
+            client.side_effect = RuntimeError("network unavailable")
+            with self.assertRaises(RuntimeError):
+                await provider.call("pin", {"chat": {"id": "123"}, "pinned": True})
+            client.side_effect = None
+            self.assertTrue((await provider.call("pin", {"chat": {"id": "123"}, "pinned": False}))["ok"])
+            self.assertFalse(request.call_args.kwargs["pinned"])
 
     async def test_unknown_telegram_target_is_rejected(self):
         provider = Telegram()
