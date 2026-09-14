@@ -234,3 +234,38 @@ This records submission, not maintainer approval or catalog availability.
 - The 200-step service run covers sequential three-file sending and stopping after a simulated failure on the second file. Automatic media loading no longer clears an existing send error.
 - The promotional README image is rendered from the real QML interface with synthetic chats, using the requested Bitwarden preview layout as a visual reference.
 - No real files/messages were sent to Telegram or WhatsApp during automated testing. Native album sending is not implemented; attachments are sent sequentially.
+
+
+## WhatsApp attachment availability — 2026-09-14
+
+A local download failure was reproduced for an indexed image with neither a download path nor a media key. The provider returned a missing-metadata error, which the bridge previously converted to its generic warning about resending. Message fetching and normalization succeeded.
+
+The adapter now exposes download availability without exporting media keys or download URLs. The UI keeps unavailable attachments visible, skips their automatic downloads and distinguishes media failures from send failures. A later metadata update can make the attachment downloadable again.
+
+47 project Python tests and 152 retained WhatsApp tests passed (one intentional skip), plus QtTest and QML/schema checks. The synthetic service fixture now includes an attachment without metadata and fails if automatic loading tries to download it.
+
+
+## Incoming activity and voice player — 2026-09-14
+
+Telegram uses incoming UserUpdate events and server-returned user status, preserving coarse/hidden last-seen privacy. WhatsApp wacli 0.17.1 exposes signed chat_presence webhooks (composing/paused, including audio recording); its interface does not expose online/last-seen events. Activity expires after eight seconds without renewal and is never inferred from chat/message timestamps. The existing receipt interpretation and checkmark colors remain unchanged.
+
+The voice player adds seeking, elapsed/total time, and 1×/1.5×/2× speed. UI fixtures use a silent three-second Opus file to exercise duration, speed, seeking and pausing when chat surfaces close. Presence tests cover signature verification, per-chat/per-sender isolation, pause events, expiry, Telegram privacy statuses and cached server lookups. Live incoming events depend on what each provider sends; no outgoing activity or real test messages were sent.
+
+
+## Voice recording — 2026-09-14
+
+The microphone button starts a private FFmpeg/PulseAudio capture (also supported by pipewire-pulse), encoding mono OGG/Opus. The UI offers stop, playback preview, discard and explicit send. FFprobe validates the finished file and provides duration for Telegram's voice-note attribute. WhatsApp uses the existing validated voice-draft sender. No text caption is consumed. A five-minute cap and close/chat-switch/reload cleanup bound recording lifetime.
+
+Tests use a synthetic silent FFmpeg input, never the live microphone: actual encoder output, private permissions, duration, unavailable input, draft ownership, failure retention, confirmed-send cleanup and provider-specific voice routing. English/German UI fixtures cover the microphone control and preview; the 210-step service fixture covers start/stop/send, preserved text and stopping when surfaces close. All 55 project tests and 152 retained WhatsApp tests pass (one intentional skip), alongside QML/QtTest/schema checks. Real microphone quality and delivery to WhatsApp/Telegram await the user's hands-on test before publication.
+
+
+## Message deletion — 2026-09-14
+
+Single-message deletion is exposed through the text context menu and a delete icon (including media-only messages), followed by a translated confirmation. WhatsApp offers deletion for yourself and, for outgoing messages, everyone. Telegram hides self-only deletion for Channel entities (supergroups/channels), and the backend independently rejects that scope because Telethon otherwise deletes for everyone regardless of the revoke flag. Telegram also fetches the message and verifies its chat ID before deletion; the API itself does not guarantee private-chat ID membership. There is no fallback to a different deletion scope.
+
+59 project tests and 152 retained WhatsApp tests pass, plus QML/QtTest/schema checks. English/German UI fixtures verify confirmation, scope defaults, incoming WhatsApp restrictions, Telegram group scope and cancellation on chat switch. The service fixture checks successful removal/reply cleanup, rejection of stale chat selection and retention on failure. All deletion calls are synthetic; no real conversations were modified. A transient voice-preview layout timing failure in one UI run was followed by a passing rerun; the fixture now waits a bounded two seconds for the loaded preview/layout instead of assuming immediate readiness.
+
+
+## v0.4.0 acceptance — 2026-09-14
+
+The maintainer reports that the current features appear to work in their setup and has approved committing, pushing and releasing this version. This is user-reported hands-on acceptance; automated tests continue to use synthetic messages and microphone input. The release includes voice recording/playback controls, incoming activity, message deletion, the missing WhatsApp media metadata fix, translations and the shorter documentation.

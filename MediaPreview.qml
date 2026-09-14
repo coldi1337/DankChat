@@ -13,7 +13,7 @@ ColumnLayout {
     readonly property string path: message.mediaPath || ""
     readonly property string mediaType: message.mediaType || ""
     readonly property bool movie: mediaType === "video" || String(message.mimeType || "").toLowerCase().startsWith("video/") || /\.(mp4|f4v|m4v|mov|3gp|webm|mkv)$/i.test(path)
-    readonly property bool sound: ["audio", "voice", "ptt"].includes(mediaType) || /\.(ogg|opus|mp3|m4a|wav)$/i.test(path)
+    readonly property bool sound: String(message.mimeType || "").toLowerCase().startsWith("audio/") || ["audio", "voice", "ptt"].includes(mediaType) || /\.(ogg|opus|mp3|m4a|wav)$/i.test(path)
     readonly property bool picture: !movie && !sound && (["image", "photo", "sticker", "gif"].includes(mediaType) || /\.(png|jpe?g|webp|gif)$/i.test(path))
     readonly property bool downloading: !!service.downloads[service.selectedChat?.key + ":" + message.id]
     spacing: Theme.spacingXS
@@ -31,7 +31,7 @@ ColumnLayout {
     Loader {
         id: playerLoader
         Layout.fillWidth: true
-        Layout.preferredHeight: root.sound ? 48 : 228
+        Layout.preferredHeight: root.sound ? 88 : 228
         active: root.path.length > 0 && (root.movie || root.sound)
         visible: active
         property url loadedMediaUrl: ""
@@ -55,8 +55,19 @@ ColumnLayout {
         color: root.foregroundColor
         font.pixelSize: Theme.fontSizeSmall
     }
+    StyledText {
+        Layout.fillWidth: true
+        visible: !root.path && root.message.mediaDownloadable === false
+        text: I18n.trFor("dankChat", root.message.mediaUnavailable
+            ? "This attachment is no longer available from WhatsApp."
+            : "This attachment has no download information on this linked device yet.")
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: root.foregroundColor
+        font.pixelSize: Theme.fontSizeSmall
+    }
     DankButton {
-        visible: !root.path && root.mediaType !== "webpage"
+        visible: !root.path && root.message.mediaDownloadable !== false && root.mediaType !== "webpage"
         text: root.downloading ? I18n.trFor("dankChat", "Loading media…") : I18n.trFor("dankChat", "Load media")
         iconName: root.downloading ? "hourglass_empty" : "download"
         enabled: !root.downloading && !root.service.demo

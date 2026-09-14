@@ -22,6 +22,7 @@ ShellRoot {
     property real videoScroll: 0
     property bool english: Quickshell.env("DANKCHAT_TEST_LANGUAGE") === "en"
     property int step: 0
+    property int voicePreviewWaits: 0
     property int testWidth: 900
     Rectangle { id: contrastProbe; color: Colors.readable(Theme.primaryContainer, Theme.surfaceText, Theme.primaryText) }
     Component.onCompleted: { DC.Style.theme = Theme; DC.Style.settings = SettingsData; SessionData.locale = root.english ? "en" : "de"; I18n.registerPluginTranslations("dankChat", JSON.parse(Quickshell.env("DANKCHAT_TEST_TRANSLATIONS"))); }
@@ -35,6 +36,16 @@ ShellRoot {
         property bool writing: false
         property bool surfaceOpen: true
         property bool historyContext: false
+        property string presenceText: ""
+        property string voiceState: ""
+        property string voicePath: ""
+        property int voiceSeconds: 0
+        function startVoice() { voiceState = "recording"; voiceSeconds = 3; }
+        function stopVoice() { voiceState = "ready"; voicePath = Quickshell.env("DANKCHAT_TEST_VOICE"); }
+        function discardVoice() { voiceState = ""; voicePath = ""; }
+        function sendVoice() { discardVoice(); }
+        property var deletionCalls: []
+        function deleteMessage(message, forMe, key) { deletionCalls = deletionCalls.concat([{id: message.id, forMe: forMe, key: key}]); }
         function showLatest() {}
         property var activePlayer: null
         property string viewRevision: "test"
@@ -110,6 +121,17 @@ ShellRoot {
             if (root.step >= 60 && root.step <= 68) { mock.accountsOpen = false; root.testWidth = 480; Theme.fontScale = 1; }
             if (root.step >= 70) { mock.accountsOpen = false; root.testWidth = 480; Theme.fontScale = 1; }
             if (root.step >= 41 && root.step <= 43) mock.accountsOpen = false;
+            if (root.step === 15) mock.presenceText = I18n.trFor("dankChat", "Typing…");
+            if (root.step === 16) {
+                const label = root.findItem(view.item, "chatPresenceLabel");
+                if (!label || !label.text.includes(root.english ? "Typing…" : "Schreibt …")) return "FAIL translated typing status";
+                mock.presenceText = I18n.trFor("dankChat", "Last seen within a month");
+            }
+            if (root.step === 17) {
+                const label = root.findItem(view.item, "chatPresenceLabel");
+                if (!label.text.includes(root.english ? "Last seen within a month" : "Innerhalb eines Monats online")) return "FAIL translated last seen";
+                mock.presenceText = "";
+            }
             if (root.step === 41) {
                 mock.messages = mock.messages.map((row, index) => index === 0 ? Object.assign({}, row, {reactions: [{emoji: "👍", count: 2, chosen: true, custom: false}]}) : row);
                 mock.draft = "Keep this draft";
@@ -150,6 +172,24 @@ ShellRoot {
             if (root.step === 43) {
                 const chip = root.findItem(view.item, "reactionChip");
                 if (!chip || !chip.modelData.chosen || chip.modelData.count !== 2 || !chip.visible || chip.width <= 0 || chip.height <= 0) return "FAIL own reaction display";
+            }
+            if (root.step === 57) {
+                mock.messages = [{id: "voice", text: "", mediaType: "audio", mimeType: "audio/ogg", mediaPath: Quickshell.env("DANKCHAT_TEST_VOICE"), out: false, sender: "Test"}];
+            }
+            if (root.step === 58) {
+                const audio = root.findItem(view.item, "inlineMediaPlayer");
+                const speed = root.findItem(view.item, "audioPlaybackSpeed");
+                const progress = root.findItem(view.item, "audioPlaybackPosition");
+                if (!audio?.audioOnly || !speed?.visible || !progress?.enabled || progress.to < 2900) return "FAIL voice player controls or duration";
+                speed.clicked();
+                if (speed.text !== (root.english ? "1.5×" : "1,5×")) return "FAIL voice playback speed";
+                progress.value = 1200; progress.moved();
+                audio.togglePlayback();
+            }
+            if (root.step === 59) mock.surfaceOpen = false;
+            if (root.step === 60) {
+                if (root.findItem(view.item, "inlineMediaPlayer")?.playing) return "FAIL voice kept playing after closing";
+                mock.surfaceOpen = true;
             }
             if (root.step === 67) {
                 mock.messages = [{id: "wa-gif", text: "", mediaType: "gif", mimeType: "video/mp4", mediaPath: Quickshell.env("DANKCHAT_TEST_WHATSAPP_GIF"), out: false, sender: "Test"}];
@@ -192,7 +232,7 @@ ShellRoot {
                 mock.messagesReplacing();
                 mock.messages = mock.messages.map(message => message.id === "video-last" ? Object.assign({}, message, {deliveryStatus: "read"}) : message);
             }
-            if (root.step >= 97) {
+            if (root.step >= 97 && root.step <= 100) {
                 if (!root.observedVideo || root.findItem(view.item, "inlineMediaPlayer") !== root.observedVideo) return "FAIL last video recreated";
                 if (!messagesView.atYEnd || Math.abs(root.observedVideo.mapToItem(messagesView, 0, 0).y - root.videoScroll) > 1) return "FAIL last video scroll unstable";
             }
@@ -235,7 +275,59 @@ ShellRoot {
             }
             if (root.step === 68) view.item.insertEmoji("👍");
             if ([4, 5, 6, 7, 8, 24, 25, 26, 27, 43, 45, 47].includes(root.step)) view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/layout-" + root.step + ".png"));
-            return root.step === 100 ? "PASS accounts, resize, picker open/close" : "STEP " + root.step;
+            if (root.step === 101) { mock.demo = false; root.findItem(view.item, "recordVoiceButton").clicked(); }
+            if (root.step === 102) {
+                const box = root.findItem(view.item, "voiceComposer");
+                if (!box.visible || box.height < 60 || box.width > view.item.width) return "FAIL voice recording layout";
+                if (mock.voiceState !== "recording") return "FAIL microphone button";
+                if (I18n.trFor("dankChat", "Stop recording") !== (root.english ? "Stop recording" : "Aufnahme stoppen")) return "FAIL recording translation";
+                mock.stopVoice();
+            }
+            if (root.step === 103) {
+                const box = root.findItem(view.item, "voiceComposer");
+                const player = root.findItem(box, "inlineMediaPlayer");
+                if (!player || box.height < 150) {
+                    if (++root.voicePreviewWaits <= 20) { root.step--; return "STEP waiting for voice preview layout"; }
+                    return "FAIL voice preview " + JSON.stringify({player: !!player, height: box.height});
+                }
+                if (!player.audioOnly) return "FAIL voice preview is not audio";
+                view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/voice-preview.png"));
+            }
+            if (root.step === 104) mock.discardVoice();
+            if (root.step === 105 && root.findItem(view.item, "voiceComposer").visible) return "FAIL discard voice preview";
+            if (root.step === 106) {
+                mock.selectedChat = {key: "delete-wa", provider: "whatsapp", deleteForMe: true};
+                view.item.openDeleteMessage({id: "7", text: "Synthetic message", out: true});
+            }
+            if (root.step === 107) {
+                const dialog = view.item.deleteMessageDialog;
+                const scope = root.findItem(dialog.contentItem, "deleteForEveryone");
+                if (!dialog.visible || !scope.visible || scope.checked || mock.deletionCalls.length) return "FAIL delete dialog default or premature deletion";
+                if (scope.text !== (root.english ? "Delete for everyone" : "Für alle löschen")) return "FAIL delete translation";
+                dialog.accept();
+                if (mock.deletionCalls.length !== 1 || !mock.deletionCalls[0].forMe) return "FAIL delete for me";
+                view.item.openDeleteMessage({id: "8", text: "Synthetic outgoing", out: true});
+                scope.checked = true;
+                dialog.accept();
+                if (mock.deletionCalls.length !== 2 || mock.deletionCalls[1].forMe) return "FAIL delete for everyone";
+                view.item.openDeleteMessage({id: "9", text: "Synthetic incoming", out: false});
+                if (scope.visible) return "FAIL WhatsApp incoming delete for everyone offered";
+                dialog.reject();
+            }
+            if (root.step === 108) {
+                mock.selectedChat = {key: "delete-tg", provider: "telegram", deleteForMe: false};
+                view.item.openDeleteMessage({id: "10", text: "Synthetic group message", out: true});
+            }
+            if (root.step === 109) {
+                const dialog = view.item.deleteMessageDialog;
+                if (root.findItem(dialog.contentItem, "deleteForEveryone").visible) return "FAIL misleading Telegram group scope";
+                dialog.accept();
+                if (mock.deletionCalls.length !== 3 || mock.deletionCalls[2].forMe) return "FAIL Telegram group deletion scope";
+                view.item.openDeleteMessage({id: "11", text: "Synthetic cancelled message", out: true});
+                mock.selectedChat = {key: "different", provider: "telegram"};
+                if (dialog.visible || mock.deletionCalls.length !== 3) return "FAIL stale delete dialog";
+            }
+            return root.step === 110 ? "PASS accounts, resize, picker open/close" : "STEP " + root.step;
 
         }
     }

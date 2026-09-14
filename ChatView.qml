@@ -28,7 +28,7 @@ Item {
         function onActiveChanged() {
             if (!root.compact) return;
             if (root.Window.window.active) root.receivedKeyboardFocus = true;
-            else if (root.receivedKeyboardFocus && !fileDialog.visible && !attachmentConfirm.visible && !mediaDialog.visible && !disconnectConfirm.visible) root.service.closeDropdown();
+            else if (root.receivedKeyboardFocus && !fileDialog.visible && !attachmentConfirm.visible && !mediaDialog.visible && !disconnectConfirm.visible && !deleteConfirm.visible) root.service.closeDropdown();
         }
     }
     focus: true
@@ -75,11 +75,13 @@ Item {
         property bool allowReply: false
         property bool composerPaste: false
         signal replyRequested()
+        signal deleteRequested()
         width: 210
         padding: Theme.spacingXS
         popupType: Controls.Popup.Item
         background: Rectangle { radius: Theme.cornerRadius; color: Theme.surfaceContainer; border.color: Theme.outline; border.width: 1 }
         MenuEntry { visible: textMenu.allowReply; height: visible ? implicitHeight : 0; text: I18n.trFor("dankChat", "Reply"); onTriggered: textMenu.replyRequested() }
+        MenuEntry { visible: textMenu.allowReply; height: visible ? implicitHeight : 0; text: I18n.trFor("dankChat", "Delete message…"); enabled: !root.service.demo && !root.service.writing; onTriggered: textMenu.deleteRequested() }
         MenuEntry { text: I18n.trFor("dankChat", "Copy"); enabled: textMenu.editor.selectedText.length > 0; onTriggered: textMenu.editor.copy() }
         MenuEntry { visible: !textMenu.editor.readOnly; height: visible ? implicitHeight : 0; text: I18n.trFor("dankChat", "Cut"); enabled: textMenu.editor.selectedText.length > 0; onTriggered: textMenu.editor.cut() }
         MenuEntry { visible: !textMenu.editor.readOnly; height: visible ? implicitHeight : 0; text: I18n.trFor("dankChat", "Paste"); enabled: textMenu.composerPaste || textMenu.editor.canPaste; onTriggered: textMenu.composerPaste ? root.pasteClipboard() : textMenu.editor.paste() }
@@ -345,7 +347,13 @@ Item {
                     ColumnLayout {
                         Layout.fillWidth: true; spacing: 2
                         Label { Layout.fillWidth: true; text: root.service.selectedChat?.name || I18n.trFor("dankChat", "Your conversations"); elide: Text.ElideRight; font.weight: Font.Medium }
-                        Label { text: root.service.selectedChat ? (root.service.selectedChat.provider === "telegram" ? "Telegram" : "WhatsApp") : I18n.trFor("dankChat", "Choose a chat"); color: Theme.surfaceVariantText; font.pixelSize: Theme.fontSizeSmall }
+                        Label {
+                            objectName: "chatPresenceLabel"
+                            Layout.fillWidth: true
+                            text: root.service.selectedChat ? (root.service.selectedChat.provider === "telegram" ? "Telegram" : "WhatsApp") + (root.service.presenceText ? " · " + root.service.presenceText : "") : I18n.trFor("dankChat", "Choose a chat")
+                            elide: Text.ElideRight
+                            color: Theme.surfaceVariantText; font.pixelSize: Theme.fontSizeSmall
+                        }
                     }
                 }
                 Rectangle { Layout.fillWidth: true; height: 1; color: Theme.outline; opacity: 0.25 }
@@ -512,6 +520,7 @@ Item {
                                         editor: messageText
                                         allowReply: true
                                         onReplyRequested: root.service.setReply(messageRow.modelData)
+                                        onDeleteRequested: root.openDeleteMessage(messageRow.modelData)
                                     }
                                 }
                                 Flow {
@@ -579,6 +588,7 @@ Item {
                                         enabled: !root.service.demo && !root.service.reacting?.[root.service.selectedChat?.key + ":" + messageRow.modelData.id]
                                         onClicked: root.openReactionPicker(messageRow.modelData)
                                     }
+                                    Action { iconName: "delete_outline"; width: 26; height: 26; iconSize: 16; tooltipText: I18n.trFor("dankChat", "Delete message…"); enabled: !root.service.demo && !root.service.writing; onClicked: root.openDeleteMessage(messageRow.modelData) }
                                     Action { iconName: "reply"; width: 26; height: 26; iconSize: 16; onClicked: root.service.setReply(messageRow.modelData) }
                                 }
                             }
@@ -603,6 +613,35 @@ Item {
                             Label { Layout.fillWidth: true; text: root.service.reply?.text || root.service.reply?.filename || I18n.trFor("dankChat", "Attachment"); maximumLineCount: 2; wrapMode: Text.Wrap; elide: Text.ElideRight }
                         }
                         Action { iconName: "close"; tooltipText: I18n.trFor("dankChat", "Cancel reply"); onClicked: root.service.setReply(null) }
+                    }
+                }
+                Rectangle {
+                    objectName: "voiceComposer"
+                    visible: !!root.service.voiceState
+                    Layout.fillWidth: true
+                    implicitHeight: voiceColumn.implicitHeight + 20
+                    radius: Theme.cornerRadius; color: Theme.surfaceContainerHigh; border.color: Theme.outline
+                    ColumnLayout {
+                        id: voiceColumn
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 10
+                        spacing: 6
+                        Label {
+                            Layout.fillWidth: true; wrapMode: Text.Wrap
+                            text: root.service.voiceState === "recording" ? I18n.trFor("dankChat", "Recording voice message…") + " " + Math.floor(root.service.voiceSeconds / 60) + ":" + String(root.service.voiceSeconds % 60).padStart(2, "0") + " / 5:00"
+                                : root.service.voiceState === "ready" ? I18n.trFor("dankChat", "Preview voice message") : I18n.trFor("dankChat", "Please wait…")
+                        }
+                        Loader {
+                            Layout.fillWidth: true; Layout.preferredHeight: active ? 88 : 0
+                            active: !!root.service.voicePath && root.service.voiceState === "ready"
+                            sourceComponent: MediaPlayerView { sourceUrl: "file://" + root.service.voicePath; service: root.service; audioOnly: true }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            DankButton { text: I18n.trFor("dankChat", "Discard"); enabled: ["recording", "ready"].includes(root.service.voiceState); onClicked: root.service.discardVoice() }
+                            Item { Layout.fillWidth: true }
+                            DankButton { visible: root.service.voiceState === "recording"; text: I18n.trFor("dankChat", "Stop recording"); onClicked: root.service.stopVoice() }
+                            DankButton { visible: root.service.voiceState !== "recording"; text: I18n.trFor("dankChat", "Send"); enabled: root.service.voiceState === "ready" && !root.service.writing; onClicked: root.service.sendVoice() }
+                        }
                     }
                 }
                 Rectangle {
@@ -651,6 +690,7 @@ Item {
                                 }
                             }
                         }
+                        Action { objectName: "recordVoiceButton"; iconName: "mic"; tooltipText: I18n.trFor("dankChat", "Record voice message"); enabled: !root.service.demo && !root.service.writing && !root.service.voiceState; onClicked: root.service.startVoice() }
                         Action { iconName: "send"; enabled: !root.service.demo && !root.service.writing && root.service.draft.trim().length > 0; onClicked: root.service.sendMessage("") }
                     }
                 }
@@ -913,6 +953,45 @@ Item {
                 Action { iconName: "close"; onClicked: mediaDialog.close() }
             }
         }
+    }
+    readonly property alias deleteMessageDialog: deleteConfirm
+    property var deleteTarget: null
+    property var deleteChat: null
+    Connections { target: root.service; function onSelectedChatChanged() { deleteConfirm.reject(); } }
+    function openDeleteMessage(message) {
+        if (!service.selectedChat || service.demo || service.writing) return;
+        deleteTarget = message; deleteChat = service.selectedChat;
+        deleteScope.checked = false;
+        deleteConfirm.open();
+    }
+    Controls.Dialog {
+        id: deleteConfirm
+        objectName: "deleteMessageDialog"
+        anchors.centerIn: parent
+        width: Math.min(root.width - 32, 460)
+        modal: true; popupType: Controls.Popup.Item
+        background: Rectangle { color: Theme.surfaceContainer; radius: Theme.cornerRadius; border.color: Theme.outline }
+        header: Label { text: I18n.trFor("dankChat", "Delete message?"); padding: Theme.spacingM; wrapMode: Text.Wrap }
+        contentItem: ColumnLayout {
+            spacing: Theme.spacingM
+            Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: root.deleteTarget?.text || root.deleteTarget?.filename || I18n.trFor("dankChat", "Attachment"); maximumLineCount: 3; elide: Text.ElideRight }
+            Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: root.deleteChat?.deleteForMe === false || deleteScope.checked ? I18n.trFor("dankChat", "This deletes the message for everyone. This cannot be undone.") : I18n.trFor("dankChat", "This deletes the message for you. Other participants keep their copy.") }
+            Controls.CheckBox {
+                id: deleteScope
+                objectName: "deleteForEveryone"
+                visible: root.deleteChat?.deleteForMe !== false && (root.deleteChat?.provider === "telegram" || !!root.deleteTarget?.out)
+                text: I18n.trFor("dankChat", "Delete for everyone")
+                contentItem: Label { text: deleteScope.text; leftPadding: 32; wrapMode: Text.Wrap; verticalAlignment: Text.AlignVCenter }
+                indicator: Rectangle { width: 22; height: 22; y: (deleteScope.height - height) / 2; radius: 4; border.color: Theme.primary; color: deleteScope.checked ? Theme.primary : Theme.surfaceContainer; Label { anchors.centerIn: parent; text: "✓"; visible: deleteScope.checked; color: Theme.primaryText } }
+                Layout.fillWidth: true
+            }
+        }
+        footer: RowLayout {
+            Item { Layout.fillWidth: true }
+            DankButton { text: I18n.trFor("dankChat", "Cancel"); onClicked: deleteConfirm.reject() }
+            DankButton { text: I18n.trFor("dankChat", "Delete"); enabled: !root.service.writing && root.service.selectedChat?.key === root.deleteChat?.key; onClicked: deleteConfirm.accept() }
+        }
+        onAccepted: root.service.deleteMessage(root.deleteTarget, root.deleteChat.deleteForMe !== false && !deleteScope.checked, root.deleteChat.key)
     }
     property string disconnectProvider: ""
     Controls.Dialog {

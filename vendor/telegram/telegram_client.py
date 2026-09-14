@@ -411,6 +411,7 @@ class TelegramBackend:
                     "username": username,
                     "is_user": is_user,
                     "is_group": is_group,
+                    "delete_for_me": not isinstance(ent, Channel),
                     "is_channel": is_channel,
                     "is_forum": is_forum,
                     "unread_count": unread,
@@ -788,7 +789,7 @@ class TelegramBackend:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def send_file_to_chat(self, chat_id, file_path, caption="", reply_to=None, topic_id=None):
+    async def send_file_to_chat(self, chat_id, file_path, caption="", reply_to=None, topic_id=None, voice_note=False, voice_duration=0):
         if not await self.client.is_user_authorized():
             return {"success": False, "error": "Not authorized"}
         try:
@@ -800,7 +801,10 @@ class TelegramBackend:
             kwargs = {}
             if rep_id is not None:
                 kwargs["reply_to"] = rep_id
-            sent = await self.client.send_file(entity, file_path, caption=caption or None, **kwargs)
+            if voice_note:
+                from telethon.tl.types import DocumentAttributeAudio
+                kwargs["attributes"] = [DocumentAttributeAudio(duration=int(voice_duration), voice=True)]
+            sent = await self.client.send_file(entity, file_path, caption=caption or None, voice_note=voice_note, **kwargs)
             # Invalidate message cache so next fetch includes the new file
             for ck in list(self.messages_cache.keys()):
                 if ck.startswith(f"{chat_id}_"):

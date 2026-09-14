@@ -1,43 +1,41 @@
-# Third-party software
+# Third-party notices
 
-DankChat is an independent DMS integration built on two MIT-licensed projects:
+DankChat's original code and documentation are licensed under the [MIT License](LICENSE),
+Copyright (c) 2026 coldi1337. The following components retain their own copyright
+notices and licenses.
 
-- [OmarGram](https://github.com/JoeJoeflyn/omargram), by JoeJoeflyn.
-  `vendor/telegram/telegram_client.py` retains the Telegram chat, message,
-  and media operations. Directory roots and internal names use DankChat,
-  and desktop refresh/notification commands are adapted for DMS. QR linking
-  is implemented separately in `backend/qr_login.py`. Numeric message/chat
-  timestamps were added for consistent chronological ordering.
-- [OmaWhatsApp](https://github.com/MoizIbnYousaf/Omarchy-Whatsapp), by
-  MoizIbnYousaf. Its helper and asset module are adapted under
-  `vendor/whatsapp/bin/whatsapp_client.py` and `whatsapp_assets.py`.
-  Internal identifiers, user-facing branding and local staging names use
-  neutral provider names or DankChat; wacli protocol arguments are retained.
-  Three Python backend test files are included and follow the renamed imports.
-  One Omarchy installer test is explicitly skipped because that installer
-  is not included in DankChat.
+| Component | Copyright | License |
+| --- | --- | --- |
+| [OmarGram](https://github.com/JoeJoeflyn/omargram), adapted Telegram client | Copyright (c) 2026 JoeJoeflyn | [MIT](vendor/telegram/LICENSE) |
+| [OmaWhatsApp](https://github.com/MoizIbnYousaf/Omarchy-Whatsapp), adapted helper, assets and tests | Copyright (c) 2026 MoizIbnYousaf | [MIT](vendor/whatsapp/LICENSE) |
+| [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell), test manifest schema | Copyright (c) 2025 Avenge Media LLC | [MIT](tests/DMS-LICENSE) |
+| Unicode Emoji and CLDR data | Copyright © Unicode, Inc. | [Unicode License v3](data/unicode/LICENSE) |
 
-Exact upstream revisions are recorded in [docs/upstream.json](docs/upstream.json).
-Both original MIT notices are retained alongside the source. The upstream
-WhatsApp third-party notice is also retained there.
+## Adapted clients
 
-The common DMS interface is implemented in `ChatView.qml`, with the WhatsApp
-client's chat-rail/conversation/composer layout informing both services.
+`vendor/telegram/telegram_client.py` and `vendor/whatsapp/bin/` contain adapted
+upstream code. Changes include DankChat paths and naming, DMS integration,
+message metadata and shared-client features. The WhatsApp interface also informed
+DankChat's chat-list and composer layout.
 
-The DMS manifest schema in `tests/plugin-schema.json` comes from
-[DankMaterialShell's plugin development skill](https://github.com/AvengeMedia/DankMaterialShell/tree/master/.agents/skills/dms-plugin-dev).
-It is used for development validation, not included as an application service.
+Exact source revisions are recorded in [docs/upstream.json](docs/upstream.json).
+The [upstream WhatsApp notices](vendor/whatsapp/THIRD_PARTY_NOTICES.md) are retained.
 
-Runtime dependencies are installed separately: Telethon, qrcode, Pillow, and
-wacli. Their licenses continue to apply. DankChat does not bundle a wacli binary.
+## Test schema
 
-## Unicode emoji data
+`tests/plugin-schema.json` comes from DankMaterialShell's
+[plugin development skill](https://github.com/AvengeMedia/DankMaterialShell/tree/master/.agents/skills/dms-plugin-dev).
+Its license is retained in `tests/DMS-LICENSE`.
 
-`emoji-data.js` is generated from Unicode Emoji 17.0 `emoji-test.txt` and
-Unicode CLDR 48 English/German annotations (including derived annotations).
-Copyright © Unicode, Inc. Distributed under the
-[Unicode License v3](data/unicode/LICENSE), retained in full.
-Sources and SHA-256 hashes are recorded in
+## Emoji data
+
+`emoji-data.js` is generated from Unicode Emoji 17.0 and Unicode CLDR 48
+English/German annotations. The full Unicode License v3 is retained in
+`data/unicode/LICENSE`; source URLs and hashes are in
 [data/unicode/sources.json](data/unicode/sources.json).
-Run `python3 scripts/update-emoji-data` to regenerate; runtime browsing and
-searching are offline and do not contact Unicode or any search service.
+
+## External dependencies
+
+DMS/Quickshell, Telethon, qrcode, Pillow, wacli, Qt Multimedia, FFmpeg and
+wl-clipboard are installed separately and remain subject to their respective
+licenses. DankChat does not distribute their binaries.

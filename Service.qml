@@ -49,6 +49,39 @@ PluginComponent {
     readonly property string draft: selectedChat ? (drafts[selectedChat.key] || "") : ""
     readonly property var reply: selectedChat ? (replies[selectedChat.key] || null) : null
 
+    property var chatPresence: ({})
+    property bool presenceBusy: false
+    property double presenceClock: Date.now() / 1000
+    readonly property string presenceText: {
+        const p = chatPresence;
+        if (p.activityExpiresAt > presenceClock) {
+            if (p.activity === "recording") return I18n.trFor("dankChat", "Recording…");
+            if (p.activity === "typing") return I18n.trFor("dankChat", "Typing…");
+        }
+        if (p.status === "online" && p.expiresAt > presenceClock) return I18n.trFor("dankChat", "Online");
+        if (p.status === "offline" && p.lastSeen > 0) return I18n.trFor("dankChat", "Last seen") + " " + Qt.formatDateTime(new Date(p.lastSeen * 1000), "dd.MM.yyyy HH:mm");
+        if (p.status === "recently") return I18n.trFor("dankChat", "Last seen recently");
+        if (p.status === "last_week") return I18n.trFor("dankChat", "Last seen within a week");
+        if (p.status === "last_month") return I18n.trFor("dankChat", "Last seen within a month");
+        return "";
+    }
+    onSelectedChatChanged: { if (voiceState) discardVoice(); chatPresence = {}; Qt.callLater(loadPresence); }
+    function loadPresence() {
+        if (demo || !surfaceOpen || !selectedChat || presenceBusy) return;
+        const chat = selectedChat;
+        presenceBusy = true;
+        if (!sendRequest(chat.provider, "presence", {chat: chat}, result => {
+            presenceBusy = false;
+            if (selectedChat?.key !== chat.key || !surfaceOpen) return;
+            chatPresence = result.ok ? result.presence || {} : {};
+            presenceClock = Date.now() / 1000;
+        })) presenceBusy = false;
+    }
+    Timer {
+        interval: 1500; repeat: true
+        running: root.surfaceOpen && !!root.selectedChat && !root.demo
+        onTriggered: { root.presenceClock = Date.now() / 1000; root.loadPresence(); }
+    }
     function sendRequest(provider, action, payload, callback) {
         if (!bridge.running || demo) return false;
         if (["status", "chats"].includes(action) && Object.values(pending).some(entry => entry.provider === provider && entry.action === action)) return false;
@@ -60,7 +93,8 @@ PluginComponent {
         return true;
     }
     function configure() {
-        markingRead = {}; reacting = {};
+        voiceState = ""; voicePath = "";
+        markingRead = {}; reacting = {}; presenceBusy = false; chatPresence = {};
         configurationEpoch++;
         downloads = {}; automaticMediaAttempts = {};
         loadingMessages = false;
@@ -166,6 +200,74 @@ PluginComponent {
             if (selectedChat?.key === chat.key) showLatest();
         })) writing = false;
     }
+    property string voiceState: ""
+    property string voicePath: ""
+    property var voiceChat: null
+    property string voiceReplyId: ""
+    property int voiceSeconds: 0
+    function startVoice() {
+        if (!selectedChat || demo || writing || voiceState) return;
+        if (activePlayer) activePlayer.pause();
+        voiceChat = selectedChat; voiceReplyId = reply?.id || "";
+        voiceSeconds = 0; voiceState = "starting"; errorText = "";
+        if (!sendRequest(voiceChat.provider, "voice_start", {}, result => {
+            if (!result.ok) { voiceState = ""; errorText = I18n.trFor("dankChat", result.error); return; }
+            voiceState = "recording";
+            if (!surfaceOpen || selectedChat?.key !== voiceChat.key) discardVoice();
+        })) voiceState = "";
+    }
+    function stopVoice() {
+        if (voiceState !== "recording") return;
+        voiceState = "stopping";
+        if (!sendRequest(voiceChat.provider, "voice_stop", {}, result => {
+            voiceState = result.ok ? "ready" : "";
+            voicePath = result.path || "";
+            if (!result.ok) errorText = I18n.trFor("dankChat", result.error);
+            if (selectedChat?.key !== voiceChat.key) discardVoice();
+        })) voiceState = "";
+    }
+    function discardVoice() {
+        if (!voiceState || voiceState === "sending" || voiceState === "starting" || voiceState === "stopping") return;
+        voiceState = "discarding"; voicePath = "";
+        if (!sendRequest(voiceChat.provider, "voice_discard", {}, result => {
+            voiceState = "";
+            if (!result.ok) errorText = I18n.trFor("dankChat", result.error);
+        })) voiceState = "";
+    }
+    function sendVoice() {
+        if (voiceState !== "ready" || writing || selectedChat?.key !== voiceChat.key) return;
+        voiceState = "sending"; writing = true; errorText = "";
+        const chat = voiceChat, replyId = voiceReplyId;
+        if (!sendRequest(chat.provider, "voice", {chat: chat, path: voicePath, replyId: replyId}, result => {
+            writing = false;
+            if (!result.ok) { voiceState = "ready"; errorText = I18n.trFor("dankChat", "Voice message sending failed. Check the chat before retrying."); return; }
+            voicePath = ""; voiceState = "";
+            const values = Object.assign({}, replies);
+            if (values[chat.key]?.id === replyId) delete values[chat.key];
+            replies = values;
+            if (selectedChat?.key === chat.key) showLatest();
+        })) { writing = false; voiceState = "ready"; }
+    }
+    Timer {
+        interval: 1000; repeat: true; running: root.voiceState === "recording"
+        onTriggered: { root.voiceSeconds++; if (root.voiceSeconds >= 300) root.stopVoice(); }
+    }
+    function deleteMessage(message, forMe, expectedKey) {
+        if (demo || writing || !selectedChat || selectedChat.key !== expectedKey) {
+            errorText = I18n.trFor("dankChat", "The selected chat changed. Select the message again."); return;
+        }
+        const chat = selectedChat;
+        writing = true; errorText = "";
+        if (!sendRequest(chat.provider, "delete", {chat: chat, messageId: String(message.id), forMe: forMe}, result => {
+            writing = false;
+            if (!result.ok) { errorText = I18n.trFor("dankChat", result.error); return; }
+            const values = Object.assign({}, replies);
+            if (values[chat.key]?.id === message.id) delete values[chat.key];
+            replies = values;
+            if (selectedChat?.key === chat.key) messages = messages.filter(row => row.id !== message.id);
+            refresh();
+        })) writing = false;
+    }
     function sendAttachments(paths, expectedKey, finished) {
         if (!selectedChat || writing || demo || !paths.length || paths.length > 10 || selectedChat.key !== expectedKey) {
             errorText = I18n.trFor("dankChat", "The selected chat changed. Choose the attachment again.");
@@ -221,14 +323,14 @@ PluginComponent {
             else refresh();
         });
     }
-    onSurfaceOpenChanged: if (surfaceOpen) Qt.callLater(loadNextMedia)
+    onSurfaceOpenChanged: { if (surfaceOpen) { Qt.callLater(loadNextMedia); Qt.callLater(loadPresence); } else { chatPresence = {}; if (voiceState === "recording") stopVoice(); } }
     function loadNextMedia() {
         if (!surfaceOpen || demo || !selectedChat || accountBusy[selectedChat.provider] || Object.keys(downloads).length) return;
         const types = ["photo", "image", "video", "sticker", "gif", "audio", "voice", "ptt"];
         for (let i = messages.length - 1; i >= 0; --i) {
             const message = messages[i];
             const key = selectedChat.key + ":" + message.id;
-            if (!message.mediaPath && types.includes(message.mediaType) && !automaticMediaAttempts[key]) {
+            if (!message.mediaPath && message.mediaDownloadable !== false && types.includes(message.mediaType) && !automaticMediaAttempts[key]) {
                 automaticMediaAttempts[key] = true;
                 downloadMedia(message, true);
                 return;
@@ -244,7 +346,7 @@ PluginComponent {
         if (!automatic) errorText = "";
         if (!sendRequest(chat.provider, "download", {chat: chat, messageId: message.id, mediaType: message.mediaType}, result => {
             const active = Object.assign({}, downloads); delete active[key]; downloads = active;
-            if (!result.ok) { errorText = result.error; Qt.callLater(loadNextMedia); return; }
+            if (!result.ok) { if (!automatic || !errorText) errorText = I18n.trFor("dankChat", result.error); Qt.callLater(loadNextMedia); return; }
             if (selectedChat?.key === chat.key && result.path) {
                 messagesReplacing();
                 messages = messages.map(row => row.id === message.id ? Object.assign({}, row, {mediaPath: result.path}) : row);
@@ -306,6 +408,7 @@ PluginComponent {
         });
     }
     function closeDropdown() { popout.close(); }
+    function closeWindow() { app.visible = false; }
     function openWindow() {
         if (IdleService.isShellLocked) return;
         popout.close(); app.visible = true; refresh();
@@ -364,7 +467,8 @@ PluginComponent {
         }
         stderr: StdioCollector {}
         onExited: {
-            root.pending = {}; root.writing = false; root.loadingMessages = false; root.markingRead = {}; root.reacting = {};
+            root.voiceState = ""; root.voicePath = "";
+            root.pending = {}; root.writing = false; root.loadingMessages = false; root.markingRead = {}; root.reacting = {}; root.presenceBusy = false; root.chatPresence = {};
             if (!root.demo) root.errorText = I18n.trFor("dankChat", "The chat service stopped. Reload DankChat to reconnect.");
         }
     }

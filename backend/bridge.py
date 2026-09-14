@@ -11,10 +11,13 @@ import os
 from pathlib import Path
 import re
 import signal
+import time
 import shutil
 import tempfile
 import sys
 
+from voice import VoiceRecorder
+from presence import telegram_status, whatsapp_activity, TTL
 from clipboard_image import ClipboardImages
 from model import chat, messages
 from qr_login import QrLogin
@@ -74,6 +77,8 @@ class Telegram:
         self.qr = None
         self.auth_state = "disconnected"
         self.downloads = {}
+        self.activity = {}
+        self.user_status = {}
 
     async def connect(self):
         if self.daemon:
@@ -104,6 +109,22 @@ class Telegram:
         async def invalidate(event):
             daemon.messages_cache.clear()
 
+        @daemon.client.on(telethon.events.UserUpdate)
+        async def presence_update(event):
+            now = time.time()
+            if event.status is not None:
+                self.user_status = {k: v for k, v in self.user_status.items() if now - v[1] < 60}
+                self.user_status[str(event.sender_id)] = (telegram_status(event.status), now)
+            if event.action is not None:
+                self.activity = {k: v for k, v in self.activity.items() if v[1] > now}
+                key = (str(event.chat_id), str(event.sender_id))
+                kind = type(event.action).__name__
+                value = {'SendMessageTypingAction': 'typing', 'SendMessageRecordAudioAction': 'recording', 'SendMessageRecordVideoAction': 'recording', 'SendMessageRecordRoundAction': 'recording'}.get(kind)
+                if value:
+                    self.activity[key] = (value, int(now) + TTL)
+                else:
+                    self.activity.pop(key, None)
+
     async def status(self):
         if not self.daemon and not (CONFIG / "telegram/telegram.session").exists():
             return {"ok": True, "authorized": False, "authState": self.auth_state}
@@ -127,6 +148,7 @@ class Telegram:
             self.qr_task = None
             self.auth_state = "disconnected"
             self.downloads.clear()
+            self.activity.clear(); self.user_status.clear()
             shutil.rmtree(CACHE / "telegram", ignore_errors=True)
             return {"ok": True}
         if action == "cancel_login":
@@ -159,11 +181,46 @@ class Telegram:
             result = await self.daemon.execute_command({"action": "dialogs", "limit": 200})
             return {"ok": True, "chats": [chat("telegram", c) for c in result["chats"]]}
         target = data.get("chat", {})
-        if action in {"messages", "send", "read", "file", "download", "pin", "context", "reaction"}:
+        if action in {"messages", "send", "read", "voice", "file", "download", "pin", "context", "reaction", "presence", "delete"}:
             # Resolve only exact dialogs returned by this account, never a guessed recipient.
             ident = str(target.get("id", ""))
             if not any(str(c["id"]) == ident for c in self.daemon.dialogs_cache):
                 raise ProviderError("Select an existing Telegram chat first.")
+            if action == "delete":
+                from telethon.tl.types import Channel
+                entity = await client.get_entity(int(ident))
+                if data["forMe"] and isinstance(entity, Channel):
+                    raise ProviderError("Telegram only supports deleting for everyone in this chat.")
+                mid = int(data["messageId"])
+                row = await client.get_messages(entity, ids=mid)
+                if not row or str(row.chat_id) != ident:
+                    raise ProviderError("The message no longer exists in this chat.")
+                try:
+                    await client.delete_messages(entity, [mid], revoke=not data["forMe"])
+                except Exception as exc:
+                    raise ProviderError("The message could not be deleted. Check your permissions and the conversation before retrying.") from exc
+                for cache_key in list(self.daemon.messages_cache):
+                    if cache_key.startswith(ident + "_"):
+                        self.daemon.messages_cache.pop(cache_key, None)
+                self.daemon.chat_messages_cache.pop(int(ident), None)
+                self.downloads.pop((ident, str(mid)), None)
+                asyncio.create_task(self.daemon.refresh_dialogs_cache())
+                return {"ok": True}
+            if action == "presence":
+                now = time.time()
+                result = {}
+                if int(ident) > 0:
+                    cached = self.user_status.get(ident)
+                    if not cached or now - cached[1] > 30:
+                        entity = await client.get_entity(int(ident))
+                        cached = (telegram_status(getattr(entity, "status", None)), now)
+                        self.user_status[ident] = cached
+                    result.update(cached[0])
+                active = [value for (chat_id, sender), value in self.activity.items() if chat_id == ident and value[1] > now]
+                if active:
+                    value = max(active, key=lambda v: v[1])
+                    result.update(activity=value[0], activityExpiresAt=value[1])
+                return {"ok": True, "presence": result}
             if action == "context":
                 rows = await self.daemon.get_messages_for_chat(ident, limit=40, around_id=data["messageId"])
                 for row in rows:
@@ -205,6 +262,8 @@ class Telegram:
                 return {"ok": True, "path": result["file_path"]}
             if action == "send":
                 result = await self.daemon.execute_command({"action": "send", "chat_id": ident, "text": data["text"], "reply_to": data.get("replyId") or None})
+            elif action == "voice":
+                result = await self.daemon.send_file_to_chat(ident, data["path"], reply_to=data.get("replyId") or None, voice_note=True, voice_duration=data["duration"])
             elif action == "file":
                 result = await self.daemon.execute_command({"action": "send_file", "chat_id": ident, "file_path": data["path"], "caption": data.get("text", ""), "reply_to": data.get("replyId") or None})
             else:
@@ -215,6 +274,7 @@ class Telegram:
         raise ProviderError("Unsupported Telegram action.")
 
     async def close(self):
+        self.activity.clear(); self.user_status.clear()
         if self.qr_task:
             self.qr_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -318,6 +378,9 @@ class WhatsApp:
         if action == "chats":
             result = await asyncio.to_thread(backend.chats)
             return {"ok": True, "chats": [chat("whatsapp", c) for c in result["chats"]]}
+        if action == "presence":
+            backend._chat(ident)
+            return {"ok": True, "presence": await asyncio.to_thread(whatsapp_activity, self.helper_state / "receipts.sqlite", ident)}
         if action == "context":
             result = await asyncio.to_thread(backend.messages, ident, limit=40, around_id=data["messageId"])
             await asyncio.to_thread(apply_receipts, self.helper_state / "receipts.sqlite", ident, result["messages"])
@@ -327,7 +390,12 @@ class WhatsApp:
             await asyncio.to_thread(apply_receipts, self.helper_state / "receipts.sqlite", ident, result["messages"])
             return {"ok": True, "messages": messages("whatsapp", result["messages"])}
         if action == "download":
-            await asyncio.to_thread(backend.download_media, ident, data["messageId"])
+            try:
+                await asyncio.to_thread(backend.download_media, ident, data["messageId"])
+            except self.module.WhatsAppError as exc:
+                if "no downloadable media metadata" in str(exc):
+                    raise ProviderError("This attachment has no download information on this linked device yet.") from exc
+                raise ProviderError("The attachment could not be downloaded. Please try again later.") from exc
             result = await asyncio.to_thread(backend.messages, ident, limit=1, around_id=data["messageId"])
             row = next((row for row in result["messages"] if str(row["id"]) == str(data["messageId"])), {})
             return {"ok": True, "path": row.get("local_path", "")}
@@ -336,8 +404,23 @@ class WhatsApp:
             return {"ok": True}
         if action == "send":
             result = await asyncio.to_thread(backend.send, ident, data["text"], data.get("replyId", ""))
+        elif action == "voice":
+            def send_voice():
+                path = backend.voice_draft("create")["path"]
+                try:
+                    shutil.copyfile(data["path"], path)
+                    return backend.send_voice(ident, path, data.get("replyId", ""))
+                finally:
+                    with contextlib.suppress(Exception):
+                        backend.voice_draft("discard", path)
+            result = await asyncio.to_thread(send_voice)
         elif action == "file":
             result = await asyncio.to_thread(backend.send_files, ident, [data["path"]], data.get("text", ""), data.get("replyId", ""))
+        elif action == "delete":
+            try:
+                result = await asyncio.to_thread(backend.delete_message, ident, data["messageId"], data["forMe"])
+            except self.module.WhatsAppError as exc:
+                raise ProviderError("The message could not be deleted. Check the deletion time limit, your permissions and the conversation before retrying.") from exc
         elif action == "reaction":
             result = await asyncio.to_thread(backend.react, ident, data["messageId"], data["emoji"])
         elif action == "read":
@@ -360,10 +443,12 @@ class Bridge:
     def __init__(self):
         self.providers = {}
         self.clipboard = ClipboardImages(RUNTIME)
+        self.voice = VoiceRecorder(RUNTIME)
 
     async def dispatch(self, request):
         action = request.get("action")
         if action == "configure":
+            await self.voice.discard()
             enabled = request.get("enabled", [])
             for name in list(self.providers):
                 if name not in enabled:
@@ -387,11 +472,21 @@ class Bridge:
                 return await self.clipboard.paste()
             except (ValueError, OSError, asyncio.TimeoutError) as exc:
                 raise ProviderError(str(exc) or "The clipboard did not respond.") from exc
+        if action in {"voice_start", "voice_stop", "voice_discard"}:
+            try:
+                if action == "voice_start":
+                    return await self.voice.start()
+                if action == "voice_stop":
+                    return await self.voice.stop()
+                await self.voice.discard()
+                return {"ok": True}
+            except (ValueError, OSError) as exc:
+                raise ProviderError(str(exc)) from exc
         if action == "status":
             return await provider.status()
-        if action not in {"chats", "messages", "send", "file", "read", "acknowledge", "login", "password", "download", "pin", "logout", "cancel_login", "export", "context", "reaction"}:
+        if action not in {"chats", "messages", "send", "voice", "file", "read", "acknowledge", "login", "password", "download", "pin", "logout", "cancel_login", "export", "context", "reaction", "presence", "delete"}:
             raise ProviderError("Unsupported action.")
-        if action in {"messages", "send", "file", "read", "acknowledge", "download", "pin", "export", "context", "reaction"}:
+        if action in {"messages", "send", "voice", "file", "read", "acknowledge", "download", "pin", "export", "context", "reaction", "presence", "delete"}:
             target = request.get("chat")
             if not isinstance(target, dict) or target.get("provider") != name or not target.get("id"):
                 raise ProviderError("The chat does not belong to this service.")
@@ -405,6 +500,10 @@ class Bridge:
                 raise ProviderError("Load the media before saving it.")
             await asyncio.to_thread(export_media, selected["mediaPath"], request.get("destination", ""))
             return {"ok": True}
+        if action == "delete":
+            mid = request.get("messageId")
+            if not isinstance(request.get("forMe"), bool) or not isinstance(mid, str) or not mid or len(mid) > 256 or (name == "telegram" and (not mid.isdecimal() or int(mid) <= 0)):
+                raise ProviderError("Select a message and a deletion option.")
         if action == "reaction":
             emoji = request.get("emoji")
             ident = request.get("messageId")
@@ -422,11 +521,21 @@ class Bridge:
                 path = Path(request.get("path", ""))
                 if not path.is_absolute() or not path.is_file() or path.stat().st_size > 100 * 1024 * 1024:
                     raise ProviderError("Choose a local file smaller than 100 MB.")
-        return await provider.call(action, request)
+        if action == "voice":
+            try:
+                request["path"] = self.voice.validated_path(request.get("path"))
+                request["duration"] = self.voice.duration
+            except ValueError as exc:
+                raise ProviderError(str(exc)) from exc
+        result = await provider.call(action, request)
+        if action == "voice" and result.get("ok"):
+            await self.voice.discard()
+        return result
 
     async def close(self):
         for provider in self.providers.values():
             await provider.close()
+        await self.voice.discard()
         self.clipboard.close()
 
 
@@ -444,6 +553,7 @@ async def main():
         return
     bridge = Bridge()
     locks = {name: asyncio.Lock() for name in ("telegram", "whatsapp", "")}
+    voice_lock = asyncio.Lock()
     tasks = set()
     output = sys.stdout
     sink = open(os.devnull, "w")
@@ -452,8 +562,13 @@ async def main():
 
     async def respond(request):
         try:
-            async with locks.get(request.get("provider", ""), locks[""]):
-                result = await asyncio.wait_for(bridge.dispatch(request), timeout=210 if request.get("action") == "download" else 90)
+            async with contextlib.AsyncExitStack() as stack:
+                action = request.get("action", "")
+                if action in {"voice", "voice_start", "voice_stop", "voice_discard"}:
+                    await stack.enter_async_context(voice_lock)
+                if action not in {"voice_start", "voice_stop", "voice_discard"}:
+                    await stack.enter_async_context(locks.get(request.get("provider", ""), locks[""]))
+                result = await asyncio.wait_for(bridge.dispatch(request), timeout=210 if request.get("action") == "download" else 150 if request.get("action") == "voice" else 90)
         except ProviderError as exc:
             result = {"ok": False, "error": str(exc)}
         except Exception:

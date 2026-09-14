@@ -43,6 +43,12 @@ class ModelTests(unittest.TestCase):
         row = chat("whatsapp", {"jid": "synthetic", "account": "one", "unread": 9, "notification_unread": 0})
         self.assertEqual(row["unread"], 0)
 
+    def test_whatsapp_missing_media_remains_visible_but_is_not_downloadable(self):
+        row = message("whatsapp", {"id": "missing", "media_type": "image", "media_downloadable": False, "media_unavailable": False})
+        self.assertEqual(row["mediaType"], "image")
+        self.assertFalse(row["mediaDownloadable"])
+        self.assertFalse(row["mediaUnavailable"])
+
     def test_pinned_chat_state_survives_both_adapters(self):
         self.assertTrue(chat("telegram", {"id": "1", "pinned": True})["pinned"])
         self.assertTrue(chat("whatsapp", {"jid": "synthetic", "pinned": 1})["pinned"])
@@ -144,6 +150,35 @@ class RoutingTests(unittest.IsolatedAsyncioTestCase):
         provider.daemon.execute_command.return_value = {"success": True}
         self.assertTrue((await provider.call("read", {"chat": {"id": "123"}}))["ok"])
         provider.daemon.execute_command.assert_awaited_once_with({"action": "mark_read", "chat_id": "123"})
+
+    async def test_telegram_presence_reads_server_status_and_incoming_activity(self):
+        import time
+        from datetime import datetime, timezone
+        provider = Telegram()
+        provider.connect = AsyncMock()
+        status = type("UserStatusOnline", (), {"expires": datetime.fromtimestamp(time.time() + 60, timezone.utc)})()
+        client = SimpleNamespace(is_user_authorized=AsyncMock(return_value=True), get_entity=AsyncMock(return_value=SimpleNamespace(status=status)))
+        provider.daemon = SimpleNamespace(client=client, dialogs_cache=[{"id": 123}])
+        provider.activity[("123", "456")] = ("typing", int(time.time()) + 8)
+        result = await provider.call("presence", {"chat": {"id": "123"}})
+        self.assertEqual(result["presence"]["status"], "online")
+        self.assertEqual(result["presence"]["activity"], "typing")
+        await provider.call("presence", {"chat": {"id": "123"}})
+        client.get_entity.assert_awaited_once_with(123)
+        with self.assertRaises(ProviderError):
+            await provider.call("presence", {"chat": {"id": "999"}})
+
+    async def test_missing_whatsapp_media_metadata_is_a_read_error_not_send_warning(self):
+        provider = WhatsApp()
+        backend = Mock()
+        provider.backend = Mock(return_value=backend)
+        backend.download_media.side_effect = provider.module.WhatsAppError("message has no downloadable media metadata (run `wacli sync` first)")
+        with self.assertRaisesRegex(ProviderError, "no download information"):
+            await provider.call("download", {"chat": {"id": "synthetic"}, "messageId": "missing"})
+        backend.messages.assert_not_called()
+        backend.download_media.side_effect = provider.module.WhatsAppError("temporary download failure")
+        with self.assertRaisesRegex(ProviderError, "could not be downloaded"):
+            await provider.call("download", {"chat": {"id": "synthetic"}, "messageId": "missing"})
 
     async def test_explicit_whatsapp_read_uses_server_chat_action(self):
         provider = WhatsApp()

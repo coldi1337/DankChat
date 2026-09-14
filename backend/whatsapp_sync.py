@@ -37,7 +37,7 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     command = [str(Path.home() / '.local/bin/wacli'), '--store', str(store), '--lock-wait', '30s', 'sync', '--follow',
         '--max-reconnect', '10m', '--stale-threshold', '2m', '--presence-mode', 'quiet', '--max-db-size', '1GB', '--refresh-groups',
-        '--webhook', f'http://127.0.0.1:{server.server_port}/receipt', '--webhook-allow-private', '--webhook-events', 'receipt', '--webhook-secret', secret]
+        '--webhook', f'http://127.0.0.1:{server.server_port}/receipt', '--webhook-allow-private', '--webhook-events', 'receipt,chat_presence', '--webhook-secret', secret]
     child = None
     def stop(*args):
         if child and child.poll() is None:

@@ -14,6 +14,9 @@ def record(path, payload, signature, secret):
     if not hmac.compare_digest(signature, expected):
         return False
     event = json.loads(payload)
+    if isinstance(event, dict) and event.get('EventType') == 'chat_presence':
+        from presence import record_event
+        return record_event(path, event)
     if not isinstance(event, dict) or event.get('EventType') != 'receipt':
         return False
     rank = RANKS.get(event.get('Type'))

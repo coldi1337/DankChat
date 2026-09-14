@@ -35,6 +35,16 @@ ShellRoot {
         property bool writing: false
         property bool surfaceOpen: true
         property bool historyContext: false
+        property string presenceText: ""
+        property string voiceState: ""
+        property string voicePath: ""
+        property int voiceSeconds: 0
+        function startVoice() { voiceState = "recording"; voiceSeconds = 3; }
+        function stopVoice() { voiceState = "ready"; voicePath = Quickshell.env("DANKCHAT_TEST_VOICE"); }
+        function discardVoice() { voiceState = ""; voicePath = ""; }
+        function sendVoice() { discardVoice(); }
+        property var deletionCalls: []
+        function deleteMessage(message, forMe, key) { deletionCalls = deletionCalls.concat([{id: message.id, forMe: forMe, key: key}]); }
         function showLatest() {}
         property var activePlayer: null
         property string viewRevision: "test"
@@ -78,7 +88,7 @@ ShellRoot {
             Text { x: 64; y: 316; text: "Your chats, right in your bar."; color: "#c9bfd5"; font.pixelSize: 23 }
             Rectangle { x: 64; y: 364; width: 68; height: 3; color: "#cbb7fa" }
             Text { x: 64; y: 391; text: "Reply. React. Share."; color: "#e5ddec"; font.pixelSize: 23 }
-            Text { x: 64; y: 443; text: "Telegram + WhatsApp\nClipboard images & attachments\nDropdown + tiling window"; color: "#baadc9"; font.pixelSize: 20; lineHeight: 1.8 }
+            Text { x: 64; y: 443; text: "Telegram + WhatsApp\nVoice messages & attachments\nDropdown + tiling window"; color: "#baadc9"; font.pixelSize: 20; lineHeight: 1.8 }
             Text { x: 64; y: 674; text: "NATIVE DMS CLIENT  /  OPEN SOURCE"; color: "#a69ab5"; font.pixelSize: 12; font.letterSpacing: 2 }
             Rectangle { x: 600; y: 64; width: 622; height: 540; radius: 20; color: Theme.surface; border.color: Theme.outline }
             Text { x: 600; y: 620; text: "Synthetic chats • No private messages"; color: "#a69ab5"; font.pixelSize: 14 }
@@ -116,7 +126,7 @@ ShellRoot {
                     {id: "2", text: "Sounds good! Saturday works for me.", out: true, sender: "", time: "10:25", deliveryStatus: "read"},
                     {id: "3", text: "Let's meet by the park at ten.", out: false, sender: "Sam · demo", time: "10:26", replyId: "2", replyText: "Saturday works for me."},
                     {id: "4", text: "Perfect. I'll bring the snacks 🥐", out: true, sender: "", time: "10:27", deliveryStatus: "read"},
-                    {id: "5", text: "See you there!", out: false, sender: "Alex · demo", time: "10:28", reactions: [{emoji: "👍", count: 2, chosen: true, custom: false}]}
+                    {id: "5", text: "See you there!", mediaType: "voice", mimeType: "audio/ogg", mediaPath: Quickshell.env("DANKCHAT_TEST_VOICE"), out: false, sender: "Alex · demo", time: "10:28", reactions: [{emoji: "👍", count: 2, chosen: true, custom: false}]}
                 ];
             }
             if (root.step === 3) mock.reply = {id: "5", sender: "Alex · demo", text: "See you there!"};

@@ -1,276 +1,97 @@
 # DankChat
 
-Telegram and WhatsApp in one native [DankMaterialShell](https://danklinux.com/)
-plugin. Open a compact dropdown from DankBar or use the same conversation in a
-regular, resizable, tiling-capable window. Both services share one interface with
-DMS colors and widgets. No Electron runtime or embedded browser.
+Telegram and WhatsApp, right in [DankMaterialShell](https://danklinux.com/).
+Check a conversation from the bar or open a regular window when you need more
+room. Built with native QML widgets, without Electron or an embedded browser.
 
-![DankChat showing synthetic Telegram and WhatsApp conversations](docs/preview.png)
+![DankChat preview](docs/preview.png)
 
-**[DMS registry PR #884](https://github.com/AvengeMedia/dms-plugin-registry/pull/884) · awaiting review.**
-The automated checks pass, and the maintainer has completed broader hands-on
-testing and reports that the current features work without issues in their setup.
-See [Validation](#validation) for the test coverage and environment.
+## What it does
 
-## Features
+- Both services in one chat list, with search, pinned chats and an unread filter.
+- Replies, emoji reactions and message deletion, including “for everyone” where supported.
+- Paste screenshots, select multiple attachments and save received media.
+- View images with zoom, watch videos and listen to voice messages with seeking
+  and playback speed controls.
+- Record a voice message, listen back, then send it or discard it.
+- Typing indicators for both services, plus Telegram online and last-seen status.
+- QR sign-in, DMS themes, and English and German interfaces.
 
-### Chats and messages
+## Install
 
-- Combined chat list with **All / TG / WA** filters and local search across chat
-  names and previews. The search field has an X to clear it.
-- **Unread chats** toggle with a matching unread-chat count. Combine it with the
-  provider filter and search; click again to show all matching chats.
-- Pinned chats appear first. Right-click a chat to **Pin/Unpin** or
-  **Mark as read**. Telegram's pin-limit error explains the main-list limit of
-  5 chats without Premium and 10 with Premium.
-- Text sending, replies, clickable web links, and different incoming/outgoing
-  message bubbles. Click a quoted reply to jump to its original message.
-- Chats open at the newest message. Scrolling up keeps your reading position;
-  a down-arrow returns to the latest messages. Older reply targets load a
-  bounded history context rather than the entire chat history.
-- Sent, delivered and read indicators where the provider supplies that state.
-  See [Read state and receipts](#read-state-and-receipts) for differences.
-- Separate in-memory drafts for each chat, shared between the dropdown and app
-  window. Drafts do not survive a shell restart.
+You'll need **DMS 1.6.1+**, Quickshell, **Python 3.10+** and systemd user services.
+For media, install Qt Multimedia and image-format plugins (`qt6-multimedia-ffmpeg`
+and `qt6-imageformats` on Arch). Clipboard attachments need **wl-clipboard**.
+Voice recording needs **FFmpeg** with libopus and PulseAudio input, using either
+PulseAudio or PipeWire with `pipewire-pulse`.
 
-### Emoji and media
-
-- Paste screenshots with Ctrl+V / Shift+Insert or the composer context menu
-  (**wl-clipboard** required for images and file lists). Images appear in an
-  attachment preview and are sent only after confirmation. Normal text paste
-  remains available.
-- Collect up to 10 attachments using **Add files**, repeated image pastes or a
-  copied file-manager selection. Remove individual files before sending. Files
-  are sent sequentially, with the draft caption on the first file; this is not
-  a native album. Sending stops on the first error without automatic retries.
-  Clipboard images are limited to 20 MB; other attachments to 100 MB each.
-- Composer replies show the sender and quoted content in a themed preview box.
-
-- Themed emoji picker beside the attachment button, with all **3,953 Unicode
-  Emoji 17.0 entries**, including skin tones, flags and compound sequences.
-- Offline emoji search using German and English names/keywords, category
-  browsing, and an X to clear the search. Selection inserts at the cursor or
-  replaces selected text.
-- Emoji reactions on Telegram and WhatsApp messages. Use the smiley on a
-  message to pick an emoji, or click an existing reaction to join it. Reaction
-  chips show counts and highlight your own reaction; click it again to remove
-  it. Telegram chat restrictions still apply. Custom Telegram emoji are shown
-  as placeholders; sending custom emoji and multiple Premium reactions are
-  not supported.
-- Automatic media loading in the open chat, newest first, one file at a time.
-  Closing both surfaces stops further automatic downloads; failed downloads
-  can be retried manually.
-- Inline images and supported stickers. Click an image to enlarge it, zoom with
-  the wheel or +/− buttons, drag to pan, and double-click to toggle/reset zoom.
-- Inline video and audio playback, including MP4-encoded WhatsApp GIFs
-  cached with a `.f4v` extension. The video expand button opens a larger
-  player inside the current window without restarting playback. Message updates
-  preserve existing players.
-- One-file attachment sending through an embedded, themed DMS file browser and
-  a separate Send confirmation. Closing the picker cancels selection.
-- **Save media as…** on loaded media, with destination selection and overwrite
-  confirmation. Media can also open in an external viewer.
-
-### Accounts and DMS integration
-
-- Telegram and WhatsApp QR linking directly in the Accounts panel, without a
-  terminal. Telegram also supports the additional account password when needed.
-- **Disconnect account** with confirmation. Successful logout revokes DankChat's
-  session and clears its local account cache and drafts; phone/cloud messages
-  remain intact. Failed remote logout preserves the local session.
-- One background service shared by widget instances on multiple bars, plus an
-  unread-chat count on the bar widget.
-- DMS themes, German UI translations, and a sample-data mode with sending
-  disabled. WhatsApp synchronization runs as a systemd user service.
-
-## Using the widget
-
-| Action | Behavior |
-| --- | --- |
-| Left-click the bar widget | Toggle the compact chat dropdown. |
-| Click outside the dropdown | Close the dropdown. |
-| Right-click the bar widget | Open the regular app window. |
-| Open-in-new button in the dropdown | Move the conversation into the app window. |
-| Desktop launcher | Open the app window. |
-| Right-click a chat | Pin/unpin it or mark it as read. |
-| Enter / Shift+Enter in the composer | Send / insert a newline. |
-| Accounts button | Link or disconnect either provider. |
-
-The app window closes independently of outside clicks. Switching between the
-window and dropdown preserves the selected chat and draft.
-
-IPC entry points:
-
-```sh
-dms ipc call dankChat open
-dms ipc call dankChat accounts
-dms ipc call dankChat close
-```
-
-### Read state and receipts
-
-- **Telegram:** automatic marking as read when opening a chat is off by default.
-  Enable **Telegram read receipts** in the plugin settings if desired. The
-  explicit **Mark as read** menu action works independently of this setting.
-- **WhatsApp:** opening a chat acknowledges DankChat's local unread badge.
-  **Mark as read** explicitly synchronizes the chat's read state with WhatsApp;
-  this is separate from sender-visible per-message read receipts.
-- **Incoming receipt updates:** Telegram provides sent/read state. WhatsApp
-  delivery/read indicators use signed live receipt events on loopback only
-  (`127.0.0.1`), without message bodies or external forwarding. Historical
-  messages without recorded receipts show only the sent state. For groups, a
-  receipt means at least one participant confirmed it, as stated in the tooltip.
-
-Receiving receipt updates does not enable outgoing read receipts. The **Unread**
-filter uses the same unread state as the chat-list badges; its counter counts
-chats, as does the bar counter (across all providers). Marking a chat read removes
-it from the filtered list without closing the conversation.
-
-## Requirements and installation
-
-- DMS **1.6.1+**, Quickshell, Python **3.10+**, and systemd user services.
-- Telegram: Telethon, qrcode and Pillow in the project virtualenv. Both QR flows
-  use qrcode and Pillow, so run the setup script even for WhatsApp-only use.
-- WhatsApp: **wacli 0.17.1** at `~/.local/bin/wacli`.
-- Qt Multimedia and image-format plugins for inline media. On Arch, the relevant
-  packages are `qt6-multimedia-ffmpeg` and `qt6-imageformats`.
-- An emoji font for glyph rendering and a desktop viewer for externally opened
-  media. Newer emoji may require an updated font.
-
-Tested development environment: Arch Linux, Hyprland 0.56.2, DMS 1.6.1,
-Quickshell 0.3.1 and Qt 6.11.2. Other combinations are not yet verified.
-
-From a checkout, with DMS running:
+Install DankChat from **DMS Settings → Plugins**, then open its installed
+folder and run:
 
 ```sh
 sh scripts/setup-telegram
 python3 scripts/install-local
 ```
 
-The installer links the checkout under
-`~/.config/DankMaterialShell/plugins/DankChat`, installs the WhatsApp user unit,
-and adds a DankChat desktop launcher. It preserves the bar layout and does not
-install wacli. Enable DankChat in **DMS Settings → Plugins**, then add its widget
-to DankBar. Keep the checkout at its installed path.
+Run both commands even if you only use WhatsApp: they set up the Python
+libraries, QR linking, background sync and desktop launcher. DMS downloads the
+plugin but doesn't install these dependencies for you.
 
-For WhatsApp, download the matching build from the
-[official wacli 0.17.1 release](https://github.com/openclaw/wacli/releases/tag/v0.17.1),
-verify its checksum against the release's `checksums.txt`, and place the executable
-at `~/.local/bin/wacli`. Open **Accounts** in DankChat and complete QR linking on
-your phone.
+For WhatsApp, install [wacli 0.17.1](https://github.com/openclaw/wacli/releases/tag/v0.17.1)
+at `~/.local/bin/wacli`. Choose the build for your system and check it against
+the release's `checksums.txt`.
 
-Both providers are enabled by default. Telegram connects when linking is
-requested or a DankChat session exists. WhatsApp sync starts after a linked
-session is found. Disabling a provider pauses it and preserves its session;
-disabling WhatsApp or DankChat stops WhatsApp sync.
+Enable DankChat, add its bar widget, then open **Accounts** to link Telegram
+or WhatsApp.
 
-### Registry installation
+Prefer a Git checkout? Clone this repository and run the same two setup commands
+from there. The installer links the checkout into DMS, so keep that folder in place.
 
-The [registry submission](https://github.com/AvengeMedia/dms-plugin-registry/pull/884)
-is ready for review; DankChat is not yet available in the public plugin catalog.
-After approval, install it through the DMS plugin browser. The registry downloads the plugin source; it does not install wacli, the Python
-virtualenv or the WhatsApp user unit. Open the downloaded plugin directory and
-run `sh scripts/setup-telegram` followed by `python3 scripts/install-local` before
-enabling it. The latter also installs the launcher and sync unit, without creating
-a duplicate plugin when the checkout is already inside DMS's plugin directory.
+## Everyday use
 
-### Allowing the app window to tile
+**Left-click** the widget for the dropdown; **right-click** for the app window.
+Clicking outside closes the dropdown. The expand button moves the conversation
+into the app window, keeping your draft.
 
-If your compositor floats all DMS windows, add an exception for the exact title
-`DankChat`. A Hyprland Lua example is provided in
-[integration/hyprland.lua](integration/hyprland.lua); load it after the general
-DMS window rules. The app window is resizable, not a forced fullscreen surface.
+Right-click a chat to pin it or mark it as read. Use the message actions to
+reply, react or delete. **Enter** sends; **Shift+Enter** adds a line break.
+The microphone button starts a recording, with a preview before sending.
 
-## Local data
+Automatic Telegram read marking is off by default. Enable **Telegram read
+receipts** in plugin settings if you want opening a chat to mark it as read.
+For WhatsApp, opening a chat clears DankChat's badge; **Mark as read** syncs the
+read state with WhatsApp. The bar counter counts unread chats, not messages.
 
-DankChat uses its own account sessions; it does not import upstream session files.
+If the app window always floats, see the [Hyprland rule](integration/hyprland.lua)
+for an exception using the title `DankChat`.
 
-| Data | Location |
-| --- | --- |
-| Telegram session/config | `$XDG_CONFIG_HOME/dankchat/telegram` |
-| Telegram media cache | `$XDG_CACHE_HOME/dankchat/telegram` |
-| WhatsApp state and helper data | `$XDG_STATE_HOME/dankchat/whatsapp` |
-| Runtime lock | `$XDG_RUNTIME_DIR/dankchat` |
+## A few limits
 
-Standard XDG defaults apply when variables are missing or relative. Session
-directories are private to your user. DMS plugin preferences contain ordinary
-settings, not account sessions. Passwords and message payloads travel to the
-bridge over a private stdin pipe; the inherited WhatsApp helper passes message
-arguments to the wacli executable.
+DankChat covers everyday messaging, but doesn't yet support Telegram topics,
+message editing or forwarding, or multiple accounts per service. Older history
+is limited, and drafts are lost when DankChat restarts.
 
-Telegram uses the upstream default public client application credentials. Custom
-`api_id` / `api_hash` values can be supplied in
-`$XDG_CONFIG_HOME/dankchat/telegram/config.json`, separately from DMS settings.
+WhatsApp online/last-seen status isn't exposed by the current backend. Some
+stickers and media formats need an external viewer; attachments that haven't
+synced to the linked device may be unavailable. Read indicators depend on the
+receipt data available to DankChat.
 
-Failed or timed-out sends are never automatically resent. Check the conversation
-before retrying: the remote service may already have accepted the message.
+Attachments are sent individually, up to 10 at a time. Voice recordings stop
+after five minutes or when you close the chat; switching chats discards the
+recording. If a send fails, check the conversation before trying again.
 
-## Known limitations
+## More details
 
-- This is a shared client, not full parity with the official Telegram/WhatsApp
-  applications. Telegram topics, message editing/forwarding and message pinning
-  are not implemented in the shared UI. **Chat pinning is supported.**
-- WhatsApp voice recording, group mentions and multiple-account setup are not
-  implemented in the shared UI.
-- Telegram vector stickers and some media formats are not rendered inline;
-  unsupported files can be opened externally. Media/gallery parity is incomplete.
-- Deleted or unsynchronized quoted messages may be unavailable. General browsing
-  of the complete older message history is not implemented.
-- Drafts are not persisted across restarts.
-- Platform coverage is limited to the documented test environment; other
-  compositor/distribution combinations are not yet verified.
+- [Setup, local data and troubleshooting](docs/usage.md)
+- [Development and testing](docs/development.md)
+- [Test results](docs/validation.md)
 
+## License and credits
 
-## Validation
+[MIT](LICENSE) © 2026 coldi1337. DankChat builds on
+[OmarGram](https://github.com/JoeJoeflyn/omargram) and
+[OmaWhatsApp](https://github.com/MoizIbnYousaf/Omarchy-Whatsapp).
+Their notices and the Unicode data license are preserved in
+[Third-party notices](THIRD_PARTY_NOTICES.md).
 
-Run the backend, QtTest, QML parsing and manifest-schema checks:
-
-```sh
-.venv/bin/pip install jsonschema
-sh scripts/test
-```
-
-Run the isolated UI and service checks from a working DMS/Wayland session
-(requires `ffmpeg`, `qs`, Qt test tools and `dbus-run-session`):
-
-```sh
-python3 scripts/test-ui
-python3 scripts/test-ui --service
-# Render the promotional preview with synthetic chats:
-DANKCHAT_PROMO=1 python3 scripts/test-ui --preview
-```
-
-The UI harness opens temporary test windows, copies DMS components and uses
-private XDG directories, a private session bus, synthetic chats and generated
-media. It does not use real account databases or send real messages. Set
-`DANKCHAT_DMS_SOURCE` to the active DMS source directory if its path differs from
-the development default in the script.
-
-The latest automated pass covered 45 project Python tests, 152 passing upstream
-WhatsApp tests with one intentional skip, both QtTest suites, UI/media regressions
-and a 200-step service run. See [docs/validation.md](docs/validation.md) for the
-recorded environment, automated results and maintainer acceptance update.
-
-Emoji data is bundled for offline use. Maintainers can regenerate the pinned
-Unicode/CLDR dataset with `python3 scripts/update-emoji-data`; this maintenance
-command requires network access.
-
-## Uninstall
-
-Disable DankChat and remove its widget from DankBar. Stop
-`dankchat-whatsapp.service`, remove its user unit and reload systemd, then remove
-the development symlink and `dankchat.desktop` launcher. Keep the checkout if
-you want to continue development. Account data is preserved; use **Disconnect
-account** before uninstalling if you also want to revoke the session.
-
-## Credits and license
-
-MIT. Built on [OmarGram](https://github.com/JoeJoeflyn/omargram) and
-[OmaWhatsApp](https://github.com/MoizIbnYousaf/Omarchy-Whatsapp). Unicode emoji and
-CLDR annotations retain the Unicode License v3. See
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
-[docs/upstream.json](docs/upstream.json).
-
-The DMS integration was developed with AI assistance. The
-[validation record](docs/validation.md) distinguishes automated checks from
-real-account acceptance testing.
+Developed with AI assistance.

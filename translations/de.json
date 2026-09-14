@@ -295,5 +295,128 @@
   },
   "You": {
     "You": "Du"
+  },
+  "This attachment has no download information on this linked device yet.": {
+    "This attachment has no download information on this linked device yet.": "Für diesen Anhang fehlen auf diesem verknüpften Gerät noch die Downloadinformationen."
+  },
+  "This attachment is no longer available from WhatsApp.": {
+    "This attachment is no longer available from WhatsApp.": "Dieser Anhang ist bei WhatsApp nicht mehr verfügbar."
+  },
+  "The attachment could not be downloaded. Please try again later.": {
+    "The attachment could not be downloaded. Please try again later.": "Der Anhang konnte nicht heruntergeladen werden. Versuche es später erneut."
+  },
+  "Typing…": {
+    "Typing…": "Schreibt …"
+  },
+  "Recording…": {
+    "Recording…": "Nimmt auf …"
+  },
+  "Online": {
+    "Online": "Online"
+  },
+  "Last seen": {
+    "Last seen": "Zuletzt online:"
+  },
+  "Last seen recently": {
+    "Last seen recently": "Kürzlich online"
+  },
+  "Last seen within a week": {
+    "Last seen within a week": "Innerhalb einer Woche online"
+  },
+  "Last seen within a month": {
+    "Last seen within a month": "Innerhalb eines Monats online"
+  },
+  "Play": {
+    "Play": "Wiedergeben"
+  },
+  "Pause": {
+    "Pause": "Pausieren"
+  },
+  "Playback speed": {
+    "Playback speed": "Wiedergabegeschwindigkeit"
+  },
+  "Playback position": {
+    "Playback position": "Wiedergabeposition"
+  },
+  "1.5×": {
+    "1.5×": "1,5×"
+  },
+  "Record voice message": {
+    "Record voice message": "Sprachnachricht aufnehmen"
+  },
+  "Recording voice message…": {
+    "Recording voice message…": "Sprachnachricht wird aufgenommen …"
+  },
+  "Preview voice message": {
+    "Preview voice message": "Sprachnachricht anhören"
+  },
+  "Please wait…": {
+    "Please wait…": "Bitte warten …"
+  },
+  "Discard": {
+    "Discard": "Verwerfen"
+  },
+  "Stop recording": {
+    "Stop recording": "Aufnahme stoppen"
+  },
+  "Discard the current recording first.": {
+    "Discard the current recording first.": "Verwirf zuerst die aktuelle Aufnahme."
+  },
+  "Install FFmpeg to record voice messages.": {
+    "Install FFmpeg to record voice messages.": "Installiere FFmpeg, um Sprachnachrichten aufzunehmen."
+  },
+  "The microphone could not be opened. Check the default input device and audio service.": {
+    "The microphone could not be opened. Check the default input device and audio service.": "Das Mikrofon konnte nicht geöffnet werden. Prüfe das Standard-Eingabegerät und den Audiodienst."
+  },
+  "No recording is running.": {
+    "No recording is running.": "Es läuft keine Aufnahme."
+  },
+  "The recording could not be finished. Please record it again.": {
+    "The recording could not be finished. Please record it again.": "Die Aufnahme konnte nicht abgeschlossen werden. Bitte nimm sie erneut auf."
+  },
+  "The recording is empty or unavailable. Check your microphone.": {
+    "The recording is empty or unavailable. Check your microphone.": "Die Aufnahme ist leer oder nicht verfügbar. Prüfe dein Mikrofon."
+  },
+  "Record a voice message before sending it.": {
+    "Record a voice message before sending it.": "Nimm vor dem Senden eine Sprachnachricht auf."
+  },
+  "Voice message sending failed. Check the chat before retrying.": {
+    "Voice message sending failed. Check the chat before retrying.": "Die Sprachnachricht konnte nicht bestätigt werden. Prüfe den Chat, bevor du es erneut versuchst."
+  },
+  "Delete message…": {
+    "Delete message…": "Nachricht löschen …"
+  },
+  "Delete message?": {
+    "Delete message?": "Nachricht löschen?"
+  },
+  "Delete": {
+    "Delete": "Löschen"
+  },
+  "Delete for everyone": {
+    "Delete for everyone": "Für alle löschen"
+  },
+  "This deletes the message for everyone. This cannot be undone.": {
+    "This deletes the message for everyone. This cannot be undone.": "Die Nachricht wird für alle gelöscht. Das kann nicht rückgängig gemacht werden."
+  },
+  "This deletes the message for you. Other participants keep their copy.": {
+    "This deletes the message for you. Other participants keep their copy.": "Die Nachricht wird für dich gelöscht. Andere Teilnehmer behalten ihre Kopie."
+  },
+  "Telegram only supports deleting for everyone in this chat.": {
+    "Telegram only supports deleting for everyone in this chat.": "In diesem Chat unterstützt Telegram nur das Löschen für alle."
+  },
+  "The message no longer exists in this chat.": {
+    "The message no longer exists in this chat.": "Die Nachricht ist in diesem Chat nicht mehr vorhanden."
+  },
+  "The message could not be deleted. Check your permissions and the conversation before retrying.": {
+    "The message could not be deleted. Check your permissions and the conversation before retrying.": "Die Nachricht konnte nicht gelöscht werden. Prüfe deine Berechtigungen und den Chat, bevor du es erneut versuchst."
+  },
+  "The message could not be deleted. Check the deletion time limit, your permissions and the conversation before retrying.": {
+    "The message could not be deleted. Check the deletion time limit, your permissions and the conversation before retrying.": "Die Nachricht konnte nicht gelöscht werden. Prüfe die Löschfrist, deine Berechtigungen und den Chat, bevor du es erneut versuchst."
+  },
+  "Select a message and a deletion option.": {
+    "Select a message and a deletion option.": "Wähle eine Nachricht und eine Löschoption."
+  },
+  "The selected chat changed. Select the message again.": {
+    "The selected chat changed. Select the message again.": "Der ausgewählte Chat hat sich geändert. Wähle die Nachricht erneut."
   }
 }
