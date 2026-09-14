@@ -11,6 +11,7 @@ ShellRoot {
     id: root
     property int step: 0
     property bool automaticMediaObserved: false
+    property int attachmentsSent: -1
     Component.onCompleted: { DC.Style.theme = Theme; DC.Style.settings = SettingsData; }
     Loader {
         id: service
@@ -28,6 +29,10 @@ ShellRoot {
             }
             const chat = service.item;
             if (chat.messages.some(message => message.mediaType && message.mediaPath)) automaticMediaObserved = true;
+            if (root.step === 189) {
+                if (root.attachmentsSent !== 1 || chat.writing || !chat.errorText.includes("Synthetic attachment failure")) return "FAIL attachment failure did not stop batch " + JSON.stringify({sent: root.attachmentsSent, writing: chat.writing, error: chat.errorText});
+                chat.errorText = "";
+            }
             if (chat.errorText) return "FAIL " + chat.errorText;
             chat.refresh();
             chat.accountsOpen = root.step % 3 === 0;
@@ -42,6 +47,15 @@ ShellRoot {
                 chat.unreadOnly = false;
                 if (chat.visibleChats.length !== 1) return "FAIL unread filter cannot clear";
                 chat.filter = "all"; chat.query = "";
+            }
+            if (root.step === 186) {
+                chat.setDraft("Batch caption");
+                chat.sendAttachments(["/tmp/test-one", "/tmp/test-two", "/tmp/test-three"], chat.selectedChat.key, sent => root.attachmentsSent = sent);
+            }
+            if (root.step === 187 && (root.attachmentsSent !== 3 || chat.writing || chat.draft !== "")) return "FAIL attachment batch";
+            if (root.step === 188) {
+                root.attachmentsSent = -1;
+                chat.sendAttachments(["/tmp/test-ok", "/tmp/test-fail", "/tmp/test-not-sent"], chat.selectedChat.key, sent => root.attachmentsSent = sent);
             }
             if (root.step === 190) chat.jumpToReply("older-original");
             if (root.step === 191 && (!chat.historyContext || !chat.messages.some(message => message.id === "older-original"))) return "FAIL reply context";

@@ -20,10 +20,11 @@ ShellRoot {
     }
     property var observedVideo: null
     property real videoScroll: 0
+    property bool english: Quickshell.env("DANKCHAT_TEST_LANGUAGE") === "en"
     property int step: 0
     property int testWidth: 900
     Rectangle { id: contrastProbe; color: Colors.readable(Theme.primaryContainer, Theme.surfaceText, Theme.primaryText) }
-    Component.onCompleted: { DC.Style.theme = Theme; DC.Style.settings = SettingsData; I18n.registerPluginTranslations("dankChat", JSON.parse(Quickshell.env("DANKCHAT_TEST_TRANSLATIONS"))); }
+    Component.onCompleted: { DC.Style.theme = Theme; DC.Style.settings = SettingsData; SessionData.locale = root.english ? "en" : "de"; I18n.registerPluginTranslations("dankChat", JSON.parse(Quickshell.env("DANKCHAT_TEST_TRANSLATIONS"))); }
     QtObject {
         id: mock
         signal messagesReplacing()
@@ -56,6 +57,12 @@ ShellRoot {
             {id: "2", text: "Eine längere Beispielnachricht für schmale Fenster und unterschiedliche Farbschemata.", out: true, sender: "", mediaType: "", mediaPath: "", time: "12:01", deliveryStatus: "read"},
             {id: "3", text: "Diese Antwort dient ausschließlich dem Layouttest.", out: false, sender: "Ein besonders langer Beispiel-Absendername", mediaType: "", mediaPath: "", time: "12:02", replyText: "Eine längere Beispielnachricht …"}
         ]
+        property int clipboardRequests: 0
+        function sendRequest(provider, action, payload, callback) {
+            if (action === "clipboard_image") { clipboardRequests++; callback({ok: true, paths: [Quickshell.env("DANKCHAT_TEST_IMAGE")]}); }
+            else callback({ok: true});
+            return true;
+        }
         property var reactionEvents: []
         function reactToMessage(message, emoji, chat) {
             reactionEvents = reactionEvents.concat([{id: message.id, emoji: emoji, chat: chat.key}]);
@@ -83,6 +90,9 @@ ShellRoot {
         target: "test"
         function advance(): string {
             root.step++;
+            if (view.status === Loader.Ready) view.item.compact = root.step % 2 === 0;
+            if (I18n.trFor("dankChat", "Send attachments") !== (root.english ? "Send attachments" : "Anhänge senden")) return "FAIL attachment title translation";
+            if (I18n.trFor("dankChat", "Choose a local file smaller than 100 MB.") !== (root.english ? "Choose a local file smaller than 100 MB." : "Wähle eine lokale Datei mit weniger als 100 MB.")) return "FAIL file size translation";
             if (root.step < 92) {
                 Theme.currentTheme = StockThemes.getAllThemeNames()[Math.floor((root.step - 1) / 10) % StockThemes.getAllThemeNames().length];
                 Theme.isLightMode = root.step % 2 === 0;
@@ -90,9 +100,9 @@ ShellRoot {
             Theme.fontScale = root.step >= 60 ? 1 : root.step % 5 === 0 ? 1.5 : 1;
             if (Colors.contrast(Theme.primaryContainer, contrastProbe.color) < 4.5) return "FAIL bubble contrast " + Theme.currentTheme;
             if (view.status !== Loader.Ready) return "FAIL view not ready";
-            if (I18n.trFor("dankChat", "Unread chats") !== "Ungelesene Chats") return "FAIL unread translation";
+            if (I18n.trFor("dankChat", "Unread chats") !== (root.english ? "Unread chats" : "Ungelesene Chats")) return "FAIL unread translation";
             const pinError = I18n.trFor("dankChat", "Telegram pin limit reached: the main chat list allows 5 pinned chats without Premium (10 with Premium). Unpin another chat first.");
-            if (!pinError.startsWith("Telegram-Pin-Limit")) return "FAIL pin-limit translation";
+            if (!pinError.startsWith(root.english ? "Telegram pin limit" : "Telegram-Pin-Limit")) return "FAIL pin-limit translation";
             mock.errorText = root.step >= 24 && root.step <= 27 ? pinError : "";
             mock.statuses = root.step % 2 ? {telegram: {authorized: true}, whatsapp: {authorized: true}} : {};
             mock.accountsOpen = root.step >= 60 ? false : root.step % 7 < 2;
@@ -115,6 +125,28 @@ ShellRoot {
                 if (mock.reactionEvents.length !== 2) return "FAIL reaction sent after chat switch";
                 mock.selectedChat = mock.chats[0];
             }
+            if (root.step >= 44 && root.step <= 48) mock.accountsOpen = false;
+            if (root.step === 44) mock.reply = {id: "quoted", sender: "A deliberately long sender name", text: "A long quoted message that should wrap inside its own box. ".repeat(8)};
+            if (root.step === 45) {
+                const replyBox = root.findItem(view.item, "replyComposerPreview");
+                if (!replyBox || !replyBox.visible || replyBox.height < 50 || replyBox.height > 180) return "FAIL reply preview layout";
+            }
+            if (root.step === 46) {
+                view.item.addAttachments([Quickshell.env("DANKCHAT_TEST_VIDEO"), "/tmp/synthetic-document.pdf"]);
+                view.item.addAttachments([Quickshell.env("DANKCHAT_TEST_VIDEO")]);
+                if (view.item.attachmentPaths.length !== 2) return "FAIL multiple attachments or deduplication";
+                view.item.attachmentChatKey = mock.selectedChat.key;
+                mock.demo = false;
+                view.item.pasteClipboard();
+                if (mock.clipboardRequests !== 1 || view.item.attachmentPaths.length !== 3) return "FAIL clipboard image staging";
+                mock.demo = true;
+            }
+            if (root.step === 47) {
+                const status = JSON.parse(view.item.attachmentPreviewStatus());
+                if (!status.visible || status.count !== 3 || status.height < 100 || status.height > 700) return "FAIL attachment preview dialog";
+            }
+            if (root.step === 47) view.item.previewAttachmentImage(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/attachments-dialog.png");
+            if (root.step === 48) { view.item.previewAttachments(false); mock.reply = null; }
             if (root.step === 43) {
                 const chip = root.findItem(view.item, "reactionChip");
                 if (!chip || !chip.modelData.chosen || chip.modelData.count !== 2 || !chip.visible || chip.width <= 0 || chip.height <= 0) return "FAIL own reaction display";
@@ -202,7 +234,7 @@ ShellRoot {
                 view.item.previewEmojiImage(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/emoji.png");
             }
             if (root.step === 68) view.item.insertEmoji("👍");
-            if ([4, 5, 6, 7, 8, 24, 25, 26, 27, 43].includes(root.step)) view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/layout-" + root.step + ".png"));
+            if ([4, 5, 6, 7, 8, 24, 25, 26, 27, 43, 45, 47].includes(root.step)) view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/layout-" + root.step + ".png"));
             return root.step === 100 ? "PASS accounts, resize, picker open/close" : "STEP " + root.step;
 
         }

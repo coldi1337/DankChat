@@ -18,6 +18,8 @@ for line in sys.stdin:
         result['messages'] = [dict(id=str(i), text='Synthetic message https://example.org ' + str(i), sender='Test', out=i % 2 == 0, time='12:00', timestamp=i, mediaType='image' if i >= 78 else '', mediaPath=str(media) if (request['chat']['key'], str(i)) in downloaded else '') for i in range(80)]
     elif action == 'context':
         result['messages'] = [dict(id=request['messageId'], text='Synthetic original', sender='Test', out=False, timestamp=0, mediaType='', mediaPath='')]
+    elif action == 'file' and request.get('path') == '/tmp/test-fail':
+        result.update(ok=False, error='Synthetic attachment failure')
     elif action == 'download':
         key = (request['chat']['key'], str(request['messageId']))
         if key in downloaded:

@@ -35,6 +35,17 @@ See [Validation](#validation) for the test coverage and environment.
 
 ### Emoji and media
 
+- Paste screenshots with Ctrl+V / Shift+Insert or the composer context menu
+  (**wl-clipboard** required for images and file lists). Images appear in an
+  attachment preview and are sent only after confirmation. Normal text paste
+  remains available.
+- Collect up to 10 attachments using **Add files**, repeated image pastes or a
+  copied file-manager selection. Remove individual files before sending. Files
+  are sent sequentially, with the draft caption on the first file; this is not
+  a native album. Sending stops on the first error without automatic retries.
+  Clipboard images are limited to 20 MB; other attachments to 100 MB each.
+- Composer replies show the sender and quoted content in a themed preview box.
+
 - Themed emoji picker beside the attachment button, with all **3,953 Unicode
   Emoji 17.0 entries**, including skin tones, flags and compound sequences.
 - Offline emoji search using German and English names/keywords, category
@@ -225,6 +236,8 @@ Run the isolated UI and service checks from a working DMS/Wayland session
 ```sh
 python3 scripts/test-ui
 python3 scripts/test-ui --service
+# Render the promotional preview with synthetic chats:
+DANKCHAT_PROMO=1 python3 scripts/test-ui --preview
 ```
 
 The UI harness opens temporary test windows, copies DMS components and uses
@@ -233,7 +246,7 @@ media. It does not use real account databases or send real messages. Set
 `DANKCHAT_DMS_SOURCE` to the active DMS source directory if its path differs from
 the development default in the script.
 
-The final automated pass covered 31 project Python tests, 152 passing upstream
+The latest automated pass covered 45 project Python tests, 152 passing upstream
 WhatsApp tests with one intentional skip, both QtTest suites, UI/media regressions
 and a 200-step service run. See [docs/validation.md](docs/validation.md) for the
 recorded environment, automated results and maintainer acceptance update.

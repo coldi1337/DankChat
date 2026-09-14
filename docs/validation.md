@@ -224,3 +224,13 @@ Registry draft submitted: https://github.com/AvengeMedia/dms-plugin-registry/pul
 DankChat's repository is now public. The registry schema validator and changed-entry
 link/manifest validator both passed against the public repository and preview URL.
 This records submission, not maintainer approval or catalog availability.
+
+
+## Clipboard attachments and reply preview — 2026-09-14
+
+- 45 project Python tests and 152 retained WhatsApp tests passed (one intentional installer skip), plus QtTest suites, QML parsing and manifest validation.
+- Clipboard tests use mocked image/file-list content, check private staging and cleanup, reject remote URLs, and preserve normal text paste. They do not read or replace the user's clipboard.
+- Isolated QML tests cover a long quoted reply in narrow windows, multiple attachment selection/deduplication and clipboard image staging with a synthetic PNG.
+- The 200-step service run covers sequential three-file sending and stopping after a simulated failure on the second file. Automatic media loading no longer clears an existing send error.
+- The promotional README image is rendered from the real QML interface with synthetic chats, using the requested Bitwarden preview layout as a visual reference.
+- No real files/messages were sent to Telegram or WhatsApp during automated testing. Native album sending is not implemented; attachments are sent sequentially.

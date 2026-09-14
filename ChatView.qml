@@ -15,6 +15,9 @@ Item {
     required property var service
     Rectangle { anchors.fill: parent; color: Theme.surface; z: -1 }
     property bool compact: false
+    function previewAttachmentImage(path) { attachmentConfirm.contentItem.grabToImage(result => result.saveToFile(path)); }
+    function attachmentPreviewStatus() { return JSON.stringify({visible: attachmentConfirm.visible, count: attachmentPaths.length, height: attachmentConfirm.height}); }
+    function previewAttachments(opened) { if (opened) attachmentConfirm.open(); else attachmentConfirm.reject(); }
     function previewAttachmentPicker(opened) { if (opened) fileDialog.open(); else fileDialog.close(); }
     readonly property bool narrow: width < 620
     signal expandRequested()
@@ -70,6 +73,7 @@ Item {
         id: textMenu
         required property var editor
         property bool allowReply: false
+        property bool composerPaste: false
         signal replyRequested()
         width: 210
         padding: Theme.spacingXS
@@ -78,7 +82,7 @@ Item {
         MenuEntry { visible: textMenu.allowReply; height: visible ? implicitHeight : 0; text: I18n.trFor("dankChat", "Reply"); onTriggered: textMenu.replyRequested() }
         MenuEntry { text: I18n.trFor("dankChat", "Copy"); enabled: textMenu.editor.selectedText.length > 0; onTriggered: textMenu.editor.copy() }
         MenuEntry { visible: !textMenu.editor.readOnly; height: visible ? implicitHeight : 0; text: I18n.trFor("dankChat", "Cut"); enabled: textMenu.editor.selectedText.length > 0; onTriggered: textMenu.editor.cut() }
-        MenuEntry { visible: !textMenu.editor.readOnly; height: visible ? implicitHeight : 0; text: I18n.trFor("dankChat", "Paste"); enabled: textMenu.editor.canPaste; onTriggered: textMenu.editor.paste() }
+        MenuEntry { visible: !textMenu.editor.readOnly; height: visible ? implicitHeight : 0; text: I18n.trFor("dankChat", "Paste"); enabled: textMenu.composerPaste || textMenu.editor.canPaste; onTriggered: textMenu.composerPaste ? root.pasteClipboard() : textMenu.editor.paste() }
         MenuEntry { text: I18n.trFor("dankChat", "Select all"); enabled: textMenu.editor.length > 0; onTriggered: textMenu.editor.selectAll() }
     }
     component Avatar: Rectangle {
@@ -581,11 +585,25 @@ Item {
                         }
                     }
                 }
-                RowLayout {
+                Rectangle {
+                    objectName: "replyComposerPreview"
                     visible: !!root.service.reply
                     Layout.fillWidth: true
-                    Label { Layout.fillWidth: true; text: "↳ " + (root.service.reply?.text || ""); elide: Text.ElideRight; color: Theme.primary }
-                    Action { iconName: "close"; onClicked: root.service.setReply(null) }
+                    implicitHeight: replyPreviewRow.implicitHeight + 20
+                    radius: Theme.cornerRadius
+                    color: Theme.surfaceContainerHigh
+                    border.color: Theme.outline
+                    RowLayout {
+                        id: replyPreviewRow
+                        anchors.fill: parent; anchors.margins: 10; spacing: 10
+                        Rectangle { Layout.fillHeight: true; Layout.preferredWidth: 3; radius: 2; color: Theme.primary }
+                        ColumnLayout {
+                            Layout.fillWidth: true; Layout.minimumWidth: 0; spacing: 3
+                            Label { Layout.fillWidth: true; text: root.service.reply?.out ? I18n.trFor("dankChat", "You") : root.service.reply?.sender || I18n.trFor("dankChat", "Reply"); color: Links.readable(Theme.surfaceContainerHigh, Theme.primary, Theme.surfaceText); font.weight: Font.Medium; elide: Text.ElideRight }
+                            Label { Layout.fillWidth: true; text: root.service.reply?.text || root.service.reply?.filename || I18n.trFor("dankChat", "Attachment"); maximumLineCount: 2; wrapMode: Text.Wrap; elide: Text.ElideRight }
+                        }
+                        Action { iconName: "close"; tooltipText: I18n.trFor("dankChat", "Cancel reply"); onClicked: root.service.setReply(null) }
+                    }
                 }
                 Rectangle {
                     visible: !!root.service.selectedChat
@@ -595,7 +613,7 @@ Item {
                     border.color: composer.activeFocus ? Theme.primary : Theme.outline
                     RowLayout {
                         anchors.fill: parent; anchors.margins: 6; spacing: 4
-                        Action { iconName: "attach_file"; enabled: !root.service.demo && !root.service.writing; onClicked: { root.attachmentChatKey = root.service.selectedChat.key; root.savingMedia = false; fileDialog.open(); } }
+                        Action { iconName: "attach_file"; enabled: !root.service.demo && !root.service.writing; onClicked: { root.discardClipboardPaths(root.attachmentPaths); root.attachmentChatKey = root.service.selectedChat.key; root.attachmentPaths = []; root.savingMedia = false; fileDialog.open(); } }
                         Action {
                             iconName: "sentiment_satisfied"
                             tooltipText: I18n.trFor("dankChat", "Emoji")
@@ -622,8 +640,11 @@ Item {
                                 color: Theme.surfaceText; placeholderTextColor: Theme.surfaceVariantText
                                 font.family: Theme.fontFamily; font.pixelSize: Theme.fontSizeMedium
                                 background: null
-                                Controls.ContextMenu.menu: TextMenu { editor: composer }
+                                Controls.ContextMenu.menu: TextMenu { editor: composer; composerPaste: true }
                                 onTextChanged: if (text !== root.service.draft) root.service.setDraft(text)
+                                Keys.onPressed: event => {
+                                    if (event.matches(StandardKey.Paste)) { event.accepted = true; root.pasteClipboard(); }
+                                }
                                 Keys.onReturnPressed: event => {
                                     if (!(event.modifiers & Qt.ShiftModifier)) { root.service.sendMessage(""); event.accepted = true; }
                                     else event.accepted = false;
@@ -635,6 +656,37 @@ Item {
                 }
             }
         }
+    }
+    property bool pastingClipboard: false
+    property var attachmentPaths: []
+    function discardClipboardPaths(paths) {
+        if (!service.demo && service.selectedChat)
+            service.sendRequest(service.selectedChat.provider, "discard_clipboard", {paths: paths}, () => {});
+    }
+    function addAttachments(paths) {
+        const combined = Array.from(new Set(attachmentPaths.concat(paths)));
+        if (combined.length > 10) { discardClipboardPaths(paths.filter(path => !attachmentPaths.includes(path))); service.errorText = I18n.trFor("dankChat", "Choose up to 10 attachments."); return; }
+        attachmentPaths = combined;
+        attachmentConfirm.open();
+    }
+    function attachmentIsImage(path) { return /\.(png|jpe?g|webp|gif|bmp)$/i.test(path); }
+
+    function pasteClipboard() {
+        if (service.demo) { composer.paste(); return; }
+        if (pastingClipboard || service.writing || !service.selectedChat) return;
+        const chatKey = service.selectedChat.key;
+        const provider = service.selectedChat.provider;
+        pastingClipboard = true;
+        if (!service.sendRequest(provider, "clipboard_image", {}, result => {
+            pastingClipboard = false;
+            if (service.selectedChat?.key !== chatKey) { if (result.paths) service.sendRequest(provider, "discard_clipboard", {paths: result.paths}, () => {}); return; }
+            if (result.error) service.errorText = I18n.trFor("dankChat", result.error);
+            if (result.textFallback) { composer.paste(); return; }
+            if (!result.ok || !result.paths?.length) return;
+            if (attachmentChatKey !== chatKey) { discardClipboardPaths(attachmentPaths); attachmentPaths = []; }
+            attachmentChatKey = chatKey;
+            addAttachments(result.paths);
+        })) pastingClipboard = false;
     }
     property var reactionMessage: null
     property var reactionChat: null
@@ -796,13 +848,12 @@ Item {
                     const selectedPath = value.startsWith("file://") ? decodeURIComponent(value.slice(7)) : value;
                     fileDialog.close();
                     if (root.savingMedia) root.service.saveMedia(root.exportChat, root.exportMessage, selectedPath);
-                    else { root.attachmentPath = selectedPath; attachmentConfirm.open(); }
+                    else { root.addAttachments([selectedPath]); }
                 }
-                onCloseRequested: fileDialog.close()
+                onCloseRequested: { fileDialog.close(); if (!root.savingMedia && root.attachmentPaths.length) attachmentConfirm.open(); }
             }
         }
     }
-    property string attachmentPath: ""
     property string galleryPath: ""
     Controls.Popup {
         id: mediaDialog
@@ -891,16 +942,51 @@ Item {
         width: Math.min(root.width - 32, 400)
         modal: true
         popupType: Controls.Popup.Item
-        title: I18n.trFor("dankChat", "Send attachment")
+        title: I18n.trFor("dankChat", "Send attachments")
         background: Rectangle { color: Theme.surfaceContainer; radius: Theme.cornerRadius; border.color: Theme.outline }
         header: Label { text: attachmentConfirm.title; padding: Theme.spacingM; font.weight: Font.Medium }
         footer: RowLayout {
             Item { Layout.fillWidth: true }
             DankButton { text: I18n.trFor("dankChat", "Cancel"); onClicked: attachmentConfirm.reject() }
-            DankButton { text: I18n.trFor("dankChat", "Send"); onClicked: attachmentConfirm.accept() }
+            DankButton { text: I18n.trFor("dankChat", "Send") + " (" + root.attachmentPaths.length + ")"; enabled: root.attachmentPaths.length > 0 && !root.service.demo && !root.service.writing; onClicked: attachmentConfirm.accept() }
         }
-        contentItem: Label { text: root.attachmentPath.split("/").pop(); wrapMode: Text.Wrap }
-        onAccepted: { root.service.sendMessage(root.attachmentPath, root.attachmentChatKey); root.attachmentPath = ""; }
-        onRejected: root.attachmentPath = ""
+        contentItem: ColumnLayout {
+            spacing: Theme.spacingS
+            Controls.ScrollView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(260, root.height * 0.4)
+                clip: true
+                ColumnLayout {
+                    width: parent.width
+                    Repeater {
+                        model: root.attachmentPaths
+                        delegate: RowLayout {
+                            required property string modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            Image {
+                                visible: root.attachmentIsImage(modelData)
+                                Layout.preferredWidth: 72; Layout.preferredHeight: 64
+                                source: visible ? Links.localFileUrl(modelData) : ""
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true; sourceSize.width: 240
+                            }
+                            Label { Layout.fillWidth: true; Layout.minimumWidth: 0; text: modelData.split("/").pop(); wrapMode: Text.WrapAnywhere }
+                            Action { iconName: "close"; onClicked: { root.discardClipboardPaths([modelData]); root.attachmentPaths = root.attachmentPaths.filter((_, i) => i !== index); } }
+                        }
+                    }
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                DankButton { text: I18n.trFor("dankChat", "Add files"); onClicked: { attachmentConfirm.close(); root.savingMedia = false; fileDialog.open(); } }
+                DankButton { text: I18n.trFor("dankChat", "Paste"); enabled: !root.pastingClipboard; onClicked: root.pasteClipboard() }
+            }
+        }
+        onAccepted: {
+            const paths = root.attachmentPaths.slice();
+            root.service.sendAttachments(paths, root.attachmentChatKey, sent => { root.discardClipboardPaths(paths.slice(0, sent)); root.attachmentPaths = paths.slice(sent); });
+        }
+        onRejected: { root.discardClipboardPaths(root.attachmentPaths); root.attachmentPaths = []; }
     }
 }

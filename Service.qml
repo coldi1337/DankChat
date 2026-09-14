@@ -166,6 +166,35 @@ PluginComponent {
             if (selectedChat?.key === chat.key) showLatest();
         })) writing = false;
     }
+    function sendAttachments(paths, expectedKey, finished) {
+        if (!selectedChat || writing || demo || !paths.length || paths.length > 10 || selectedChat.key !== expectedKey) {
+            errorText = I18n.trFor("dankChat", "The selected chat changed. Choose the attachment again.");
+            finished(0); return;
+        }
+        const chat = selectedChat, text = draft, replyId = reply?.id || "";
+        writing = true; errorText = "";
+        let sent = 0;
+        const stop = () => { writing = false; finished(sent); if (selectedChat?.key === chat.key) showLatest(); };
+        const next = () => {
+            if (!sendRequest(chat.provider, "file", {chat: chat, path: paths[sent], text: sent === 0 ? text : "", replyId: replyId}, result => {
+                if (!result.ok) {
+                    errorText = I18n.trFor("dankChat", "Attachment sending stopped. Check the chat before retrying.") + " (" + sent + "/" + paths.length + ") " + (result.error ? I18n.trFor("dankChat", result.error) : "");
+                    stop(); return;
+                }
+                sent++;
+                if (sent === 1) {
+                    const values = Object.assign({}, drafts);
+                    if (values[chat.key] === text) values[chat.key] = "";
+                    drafts = values;
+                    const r = Object.assign({}, replies);
+                    if (r[chat.key]?.id === replyId) delete r[chat.key];
+                    replies = r;
+                }
+                if (sent === paths.length) stop(); else next();
+            })) { errorText = I18n.trFor("dankChat", "The chat service stopped. Reload DankChat to reconnect."); stop(); }
+        };
+        next();
+    }
     function accountAction(provider, action) {
         if (demo || accountBusy[provider]) return;
         errorText = "";
@@ -201,18 +230,18 @@ PluginComponent {
             const key = selectedChat.key + ":" + message.id;
             if (!message.mediaPath && types.includes(message.mediaType) && !automaticMediaAttempts[key]) {
                 automaticMediaAttempts[key] = true;
-                downloadMedia(message);
+                downloadMedia(message, true);
                 return;
             }
         }
     }
-    function downloadMedia(message) {
+    function downloadMedia(message, automatic) {
         if (!selectedChat || demo) return;
         const chat = selectedChat;
         const key = chat.key + ":" + message.id;
         if (downloads[key]) return;
         const active = Object.assign({}, downloads); active[key] = true; downloads = active;
-        errorText = "";
+        if (!automatic) errorText = "";
         if (!sendRequest(chat.provider, "download", {chat: chat, messageId: message.id, mediaType: message.mediaType}, result => {
             const active = Object.assign({}, downloads); delete active[key]; downloads = active;
             if (!result.ok) { errorText = result.error; Qt.callLater(loadNextMedia); return; }

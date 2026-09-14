@@ -20,6 +20,7 @@ ShellRoot {
     }
     property var observedVideo: null
     property real videoScroll: 0
+    property bool promo: Quickshell.env("DANKCHAT_PROMO") === "1"
     property int step: 0
     property int testWidth: 900
     Rectangle { id: contrastProbe; color: Colors.readable(Theme.primaryContainer, Theme.surfaceText, Theme.primaryText) }
@@ -65,12 +66,32 @@ ShellRoot {
         visible: true
         title: "DankChat isolated test"
         color: Theme.surface
-        implicitWidth: 900
-        implicitHeight: 700
+        implicitWidth: root.promo ? 1280 : 900
+        implicitHeight: root.promo ? 720 : 700
+        Rectangle {
+            id: promoBoard
+            anchors.fill: parent
+            visible: root.promo
+            gradient: Gradient { GradientStop { position: 0; color: "#211a30" } GradientStop { position: 1; color: "#100e16" } }
+            Text { x: 64; y: 90; text: "DANKMATERIALSHELL PLUGIN"; color: "#cbb7fa"; font.pixelSize: 16; font.letterSpacing: 3 }
+            Text { x: 64; y: 190; text: "DankChat"; color: "#f2ecfa"; font.pixelSize: 56; lineHeight: 1.2 }
+            Text { x: 64; y: 316; text: "Your chats, right in your bar."; color: "#c9bfd5"; font.pixelSize: 23 }
+            Rectangle { x: 64; y: 364; width: 68; height: 3; color: "#cbb7fa" }
+            Text { x: 64; y: 391; text: "Reply. React. Share."; color: "#e5ddec"; font.pixelSize: 23 }
+            Text { x: 64; y: 443; text: "Telegram + WhatsApp\nClipboard images & attachments\nDropdown + tiling window"; color: "#baadc9"; font.pixelSize: 20; lineHeight: 1.8 }
+            Text { x: 64; y: 674; text: "NATIVE DMS CLIENT  /  OPEN SOURCE"; color: "#a69ab5"; font.pixelSize: 12; font.letterSpacing: 2 }
+            Rectangle { x: 600; y: 64; width: 622; height: 540; radius: 20; color: Theme.surface; border.color: Theme.outline }
+            Text { x: 600; y: 620; text: "Synthetic chats • No private messages"; color: "#a69ab5"; font.pixelSize: 14 }
+        }
         Loader {
             id: view
+            parent: root.promo ? promoBoard : window.contentItem
+            x: root.promo ? 610 : 0
+            y: root.promo ? 76 : 0
+            scale: root.promo ? 0.69 : 1
+            transformOrigin: Item.TopLeft
             width: root.testWidth
-            height: 700
+            height: root.promo ? 744 : 700
             Component.onCompleted: setSource(Quickshell.env("DANKCHAT_TEST_VIEW"), {service: mock, compact: false})
             onStatusChanged: if (status === Loader.Error) { console.error("TEST: view failed " + Qt.createComponent(Quickshell.env("DANKCHAT_TEST_VIEW")).errorString()); Quickshell.quit(); }
         }
@@ -80,7 +101,7 @@ ShellRoot {
         function advance(): string {
             root.step++;
             Theme.currentTheme = "purple"; Theme.isLightMode = false; Theme.fontScale = 1;
-            mock.accountsOpen = false; root.testWidth = 1080;
+            mock.accountsOpen = false; root.testWidth = root.promo ? 870 : 1080;
             if (root.step === 1) {
                 mock.chats = [
                     {key: "demo-tg", id: "demo-tg", provider: "telegram", name: "Weekend plans", preview: "See you there!", unread: 2, pinned: true},
@@ -95,12 +116,16 @@ ShellRoot {
                     {id: "2", text: "Sounds good! Saturday works for me.", out: true, sender: "", time: "10:25", deliveryStatus: "read"},
                     {id: "3", text: "Let's meet by the park at ten.", out: false, sender: "Sam · demo", time: "10:26", replyId: "2", replyText: "Saturday works for me."},
                     {id: "4", text: "Perfect. I'll bring the snacks 🥐", out: true, sender: "", time: "10:27", deliveryStatus: "read"},
-                    {id: "5", text: "See you there!", out: false, sender: "Alex · demo", time: "10:28"}
+                    {id: "5", text: "See you there!", out: false, sender: "Alex · demo", time: "10:28", reactions: [{emoji: "👍", count: 2, chosen: true, custom: false}]}
                 ];
             }
+            if (root.step === 3) mock.reply = {id: "5", sender: "Alex · demo", text: "See you there!"};
             if (view.status !== Loader.Ready) return "FAIL preview not ready";
             if (root.step >= 4 && I18n.trFor("dankChat", "Unread chats") !== "Unread chats") return "FAIL preview must use English";
-            if (root.step === 6) view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/dankchat-preview.png"));
+            if (root.step === 6) {
+                if (root.promo) promoBoard.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/dankchat-promo.png"));
+                else view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/dankchat-preview.png"));
+            }
             return root.step === 12 ? "PASS synthetic preview" : "STEP " + root.step;
         }
     }

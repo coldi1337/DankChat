@@ -250,5 +250,50 @@
   },
   "Select a message to react to.": {
     "Select a message to react to.": "Wähle eine Nachricht zum Reagieren."
+  },
+  "Attachment": {
+    "Attachment": "Anhang"
+  },
+  "Cancel reply": {
+    "Cancel reply": "Antwort abbrechen"
+  },
+  "Add files": {
+    "Add files": "Dateien hinzufügen"
+  },
+  "Choose up to 10 attachments.": {
+    "Choose up to 10 attachments.": "Wähle bis zu 10 Anhänge."
+  },
+  "Install wl-clipboard to paste images.": {
+    "Install wl-clipboard to paste images.": "Installiere wl-clipboard zum Einfügen von Bildern."
+  },
+  "Attachment sending stopped. Check the chat before retrying.": {
+    "Attachment sending stopped. Check the chat before retrying.": "Anhangversand gestoppt. Prüfe den Chat vor einem erneuten Versuch."
+  },
+  "The clipboard image is too large (maximum 20 MB).": {
+    "The clipboard image is too large (maximum 20 MB).": "Das Bild in der Zwischenablage ist zu groß (maximal 20 MB)."
+  },
+  "The clipboard could not be read.": {
+    "The clipboard could not be read.": "Die Zwischenablage konnte nicht gelesen werden."
+  },
+  "The clipboard did not respond.": {
+    "The clipboard did not respond.": "Die Zwischenablage hat nicht geantwortet."
+  },
+  "The clipboard image is empty.": {
+    "The clipboard image is empty.": "Das Bild in der Zwischenablage ist leer."
+  },
+  "Choose local files only.": {
+    "Choose local files only.": "Wähle ausschließlich lokale Dateien."
+  },
+  "Too many pending clipboard images. Reload DankChat to clear them.": {
+    "Too many pending clipboard images. Reload DankChat to clear them.": "Zu viele Bilder in der Zwischenablage-Vorschau. Lade DankChat neu, um sie zu entfernen."
+  },
+  "Choose a local file smaller than 100 MB.": {
+    "Choose a local file smaller than 100 MB.": "Wähle eine lokale Datei mit weniger als 100 MB."
+  },
+  "Send attachments": {
+    "Send attachments": "Anhänge senden"
+  },
+  "You": {
+    "You": "Du"
   }
 }

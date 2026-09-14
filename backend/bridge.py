@@ -15,6 +15,7 @@ import shutil
 import tempfile
 import sys
 
+from clipboard_image import ClipboardImages
 from model import chat, messages
 from qr_login import QrLogin
 from whatsapp_login import WhatsAppLogin
@@ -358,6 +359,7 @@ class WhatsApp:
 class Bridge:
     def __init__(self):
         self.providers = {}
+        self.clipboard = ClipboardImages(RUNTIME)
 
     async def dispatch(self, request):
         action = request.get("action")
@@ -374,6 +376,17 @@ class Bridge:
         if name not in self.providers:
             raise ProviderError("This service is disabled.")
         provider = self.providers[name]
+        if action == "discard_clipboard":
+            paths = request.get("paths", [])
+            if not isinstance(paths, list) or len(paths) > 20 or any(not isinstance(p, str) for p in paths):
+                raise ProviderError("Invalid clipboard attachments.")
+            self.clipboard.discard(paths)
+            return {"ok": True}
+        if action == "clipboard_image":
+            try:
+                return await self.clipboard.paste()
+            except (ValueError, OSError, asyncio.TimeoutError) as exc:
+                raise ProviderError(str(exc) or "The clipboard did not respond.") from exc
         if action == "status":
             return await provider.status()
         if action not in {"chats", "messages", "send", "file", "read", "acknowledge", "login", "password", "download", "pin", "logout", "cancel_login", "export", "context", "reaction"}:
@@ -414,6 +427,7 @@ class Bridge:
     async def close(self):
         for provider in self.providers.values():
             await provider.close()
+        self.clipboard.close()
 
 
 async def main():
