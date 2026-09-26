@@ -15,6 +15,171 @@ PluginComponent {
     readonly property bool telegramEnabled: pluginData.telegramEnabled ?? true
     readonly property bool whatsappEnabled: pluginData.whatsappEnabled ?? true
     readonly property bool readReceipts: pluginData.telegramReadReceipts ?? false
+    readonly property bool whatsappReadState: pluginData.whatsappReadState ?? false
+    readonly property bool automaticMedia: pluginData.automaticMedia ?? true
+    readonly property bool automaticUpdates: pluginData.automaticUpdates ?? true
+    readonly property bool windowReady: windowView.status === Loader.Ready
+    property bool settingsOpen: false
+    property var appInfo: ({})
+    property var updateInfo: ({})
+    property bool checkingUpdates: false
+    property double lastUpdateAttempt: 0
+    function savePreference(key, value) {
+        if (!["telegramReadReceipts", "whatsappReadState", "automaticMedia", "automaticUpdates", "cacheLimitMb", "cacheDays", "mediaLimitMb", "mediaTypes", "notificationMode", "notificationPreview", "notificationSound", "suppressActive", "closeOnBlur"].includes(key)) return;
+        pluginService?.savePluginData("dankChat", key, value);
+        if (key === "whatsappReadState") Qt.callLater(refresh);
+        if (key === "automaticMedia" && value) Qt.callLater(loadNextMedia);
+        if (key === "automaticUpdates" && value) checkUpdates(false);
+    }
+    function checkUpdates(force) {
+        if (demo || checkingUpdates || (!force && Date.now() - lastUpdateAttempt < 86400000)) return;
+        checkingUpdates = true; lastUpdateAttempt = Date.now();
+        if (!sendRequest("", "check_updates", {force: !!force}, result => {
+            checkingUpdates = false; updateInfo = result;
+            if (result.version) appInfo = result;
+        })) { checkingUpdates = false; lastUpdateAttempt = 0; }
+    }
+    property bool readingLatest: false
+    property var automaticReadAttempts: ({})
+    function readVisibleChat() {
+        if (!surfaceOpen || settingsOpen || accountsOpen || !!browseMode || !readingLatest || historyContext || loadingMessages || !selectedChat || !messages.length) return;
+        const chat = selectedChat;
+        if (!syncReadEnabled(chat)) return;
+        const latest = messages[messages.length - 1].id;
+        if (automaticReadAttempts[chat.key] === latest) return;
+        automaticReadAttempts = Object.assign({}, automaticReadAttempts, {[chat.key]: latest});
+        markChatRead(chat, latest);
+    }
+    property var accounts: [{provider: "telegram", id: "", label: "Telegram"}, {provider: "whatsapp", id: "", label: "WhatsApp"}]
+    property var accountStatuses: ({})
+    property string accountFilter: "all"
+    function accountKey(provider, account) { return provider + (account ? ":" + account : ""); }
+    function accountLabel(chat) { return accounts.find(a => a.provider === chat?.provider && a.id === (chat?.account || ""))?.label || chat?.provider || ""; }
+    function preference(provider, account, key, fallback) { return pluginData.accountPreferences?.[accountKey(provider, account)]?.[key] ?? fallback; }
+    function saveAccountPreference(provider, account, key, value) {
+        const identity = accountKey(provider, account);
+        const prefs = Object.assign({}, pluginData.accountPreferences || {});
+        prefs[identity] = Object.assign({}, prefs[identity] || {}, {[key]: value});
+        pluginService?.savePluginData("dankChat", "accountPreferences", prefs);
+        refreshProvider(provider);
+    }
+    function syncReadEnabled(chat) { return preference(chat.provider, chat.account, "syncRead", chat.provider === "telegram" ? readReceipts : whatsappReadState); }
+    function changeAccount(provider, account, label, add) {
+        sendRequest(provider, add ? "add_account" : "rename_account", {account: account, label: label}, result => {
+            if (!result.ok) { errorText = I18n.trFor("dankChat", result.error); return; }
+            accounts = result.accounts; refresh();
+        });
+    }
+    property string browseMode: ""
+    property string messageQuery: ""
+    property var browseResults: []
+    property string browseNext: ""
+    property bool browsing: false
+    property int browseGeneration: 0
+    function browse(mode, query, more) {
+        if (!selectedChat || demo) return;
+        const chat = selectedChat, generation = ++browseGeneration;
+        browseMode = mode; messageQuery = query || ""; browsing = true;
+        if (!more) { browseResults = []; browseNext = ""; }
+        const category = mode === "search" ? "" : mode;
+        if (!sendRequest(chat.provider, "browse", {chat: chat, category: category, query: messageQuery, offset: more ? browseNext : ""}, result => {
+            if (generation !== browseGeneration || selectedChat?.key !== chat.key) return;
+            browsing = false;
+            if (!result.ok) { errorText = I18n.trFor("dankChat", result.error); return; }
+            const previous = more ? browseResults : [];
+            const seen = new Set(previous.map(row => row.id));
+            browseResults = previous.concat((result.messages || []).filter(row => !seen.has(row.id)));
+            browseNext = result.next || "";
+        })) browsing = false;
+    }
+    function closeBrowse() { browseGeneration++; browseMode = ""; browsing = false; browseResults = []; }
+    function editMessage(message, text, chat) {
+        if (!chat || !message.out || writing || demo) return;
+        writing = true;
+        sendRequest(chat.provider, "edit", {chat: chat, messageId: message.id, text: text}, result => {
+            writing = false;
+            if (!result.ok) { errorText = I18n.trFor("dankChat", result.error); return; }
+            const update = rows => rows.map(row => row.id === message.id ? Object.assign({}, row, {text: text, edited: true}) : row);
+            cacheMessages(chat.key, update(messageCache[chat.key] || []));
+            if (selectedChat?.key === chat.key) messages = update(messages);
+            if (confirmedMessages[chat.key]) delete confirmedMessages[chat.key][message.id];
+            refreshProvider(chat.provider);
+        });
+    }
+    property var storageInfo: ({})
+    property bool storageBusy: false
+    readonly property int cacheLimitMb: pluginData.cacheLimitMb ?? 512
+    readonly property int cacheDays: pluginData.cacheDays ?? 30
+    readonly property int mediaLimitMb: pluginData.mediaLimitMb ?? 25
+    readonly property var mediaTypes: pluginData.mediaTypes ?? ["images", "videos", "audio"]
+    function mediaGroup(type) { return ["photo", "image", "sticker"].includes(type) ? "images" : ["video", "gif"].includes(type) ? "videos" : ["audio", "voice", "ptt"].includes(type) ? "audio" : "files"; }
+    function storageAction(clean, clear) {
+        if (storageBusy || demo || Object.keys(downloads).length || writing) return;
+        storageBusy = true;
+        const protect = messages.map(row => row.mediaPath).filter(Boolean);
+        if (!sendRequest("", clean ? "clean_storage" : "storage_info", {limitMb: cacheLimitMb, days: cacheDays, clear: !!clear, protect: protect}, result => {
+            storageBusy = false;
+            if (result.ok) {
+                storageInfo = result;
+                if (clean) {
+                    messageCache = {};
+                    const attempts = {};
+                    Object.keys(automaticMediaAttempts).filter(key => key.startsWith(selectedChat?.key + ":")).forEach(key => attempts[key] = automaticMediaAttempts[key]);
+                    automaticMediaAttempts = attempts;
+                }
+            }
+            else errorText = I18n.trFor("dankChat", result.error);
+        })) storageBusy = false;
+    }
+    function exportDiagnostics(destination) {
+        sendRequest("", "export_diagnostics", {destination: destination}, result => {
+            if (!result.ok) errorText = I18n.trFor("dankChat", result.error);
+            else ToastService.showInfo(I18n.trFor("dankChat", "Diagnostic report saved"));
+        });
+    }
+    readonly property bool closeOnBlur: pluginData.closeOnBlur ?? true
+    readonly property string notificationMode: pluginData.notificationMode ?? "off"
+    readonly property bool notificationPreview: pluginData.notificationPreview ?? false
+    readonly property bool notificationSound: pluginData.notificationSound ?? false
+    readonly property bool suppressActive: pluginData.suppressActive ?? true
+    property var notificationSnapshots: ({})
+    function notificationPolicy(chat) {
+        const override = pluginData.chatNotifications?.[chat.key];
+        const account = preference(chat.provider, chat.account, "notifications", "default");
+        const mode = override || (account === "default" ? notificationMode : account);
+        return mode === "mentions" && chat.provider === "whatsapp" ? "off" : mode;
+    }
+    function cycleChatNotifications(chat) {
+        const modes = chat.provider === "telegram" ? ["default", "all", "mentions", "off"] : ["default", "all", "off"];
+        const current = pluginData.chatNotifications?.[chat.key] || "default";
+        const prefs = Object.assign({}, pluginData.chatNotifications || {});
+        const next = modes[(modes.indexOf(current) + 1) % modes.length];
+        if (next === "default") delete prefs[chat.key]; else prefs[chat.key] = next;
+        pluginService?.savePluginData("dankChat", "chatNotifications", prefs);
+    }
+    function considerNotifications(incoming, identity) {
+        const previous = notificationSnapshots[identity];
+        const next = {};
+        let count = 0;
+        incoming.forEach(chat => {
+            next[chat.key] = {timestamp: chat.timestamp, unread: chat.serverUnread ?? chat.unread};
+            const old = previous?.[chat.key], mode = notificationPolicy(chat);
+            if (!previous || mode === "off" || count >= 3 || (suppressActive && surfaceOpen && !accountsOpen && !settingsOpen && selectedChat?.key === chat.key)) return;
+            if ((chat.serverUnread ?? chat.unread) <= (old?.unread || 0) || chat.timestamp < (old?.timestamp || 0)) return;
+            count++;
+            sendRequest(chat.provider, "notify", {chat: chat, since: old?.timestamp || Date.now() / 1000 - 30, mentionsOnly: mode === "mentions", preview: notificationPreview, sound: notificationSound, fallback: I18n.trFor("dankChat", "New message")}, () => {});
+        });
+        notificationSnapshots = Object.assign({}, notificationSnapshots, {[identity]: next});
+    }
+    function accountConnectionText(provider, account) {
+        const identity = accountKey(provider, account), state = accountStatuses[identity];
+        if (syncFailures[identity]) return I18n.trFor("dankChat", "Connection interrupted — retrying");
+        if (!state?.authorized) return I18n.trFor("dankChat", "Not connected");
+        return I18n.trFor("dankChat", provider === "whatsapp" && !state.syncActive ? "Sync service is starting" : "Connected")
+            + (lastChecks[identity] ? " · " + I18n.trFor("dankChat", "Last checked") + " " + Qt.formatTime(new Date(lastChecks[identity]), "HH:mm:ss") : "");
+    }
+    property var transferStates: ({})
+    function transferState(key, state) { const states = Object.assign({}, transferStates); delete states[key]; states[key] = state; while (Object.keys(states).length > 200) delete states[Object.keys(states)[0]]; transferStates = states; }
     property var chats: []
     property var messages: []
     property bool historyContext: false
@@ -22,10 +187,93 @@ PluginComponent {
     signal messagesReplacing
     property var selectedChat: null
     property var statuses: ({})
+    property var syncFailures: ({})
+    property var lastChecks: ({})
+    property int reconnectAttempts: 0
+    property bool reconnecting: false
+    property bool interruptedWrite: false
+    property var changedProviders: ({})
+    property var diagnosticRequests: []
+    function connectionText(provider) {
+        if (syncFailures[provider]) return I18n.trFor("dankChat", "Connection interrupted — retrying");
+        if (!statuses[provider]?.authorized) return "";
+        const state = provider === "whatsapp"
+            ? I18n.trFor("dankChat", statuses[provider]?.syncActive === false ? "Sync service is starting" : "Sync service running")
+            : I18n.trFor("dankChat", "Connected");
+        return state + (lastChecks[provider] ? " · " + I18n.trFor("dankChat", "Last checked") + " " + Qt.formatTime(new Date(lastChecks[provider]), "HH:mm:ss") : "");
+    }
+    function retryConnection() {
+        if (demo) return;
+        reconnectAttempts = 0;
+        if (!bridge.running) { reconnecting = true; bridge.running = true; }
+        else refresh();
+    }
+    function providerChanged(provider) {
+        if (!["telegram", "whatsapp"].includes(provider)) return;
+        if (surfaceOpen && selectedChat?.provider === provider) loadMessages();
+        changedProviders = Object.assign({}, changedProviders, {[provider]: true});
+        if (!providerUpdateTimer.running) providerUpdateTimer.start();
+    }
+    Timer {
+        id: providerUpdateTimer; interval: 150
+        onTriggered: {
+            const changed = root.changedProviders; root.changedProviders = {};
+            Object.keys(changed).forEach(provider => root.refreshProvider(provider));
+        }
+    }
+    Timer {
+        id: reconnectTimer
+        interval: Math.min(30000, 1000 * Math.pow(2, root.reconnectAttempts)); repeat: false
+        onTriggered: { if (!root.demo && !bridge.running) { root.reconnectAttempts++; root.reconnecting = true; bridge.running = true; } }
+    }
     property var drafts: ({})
     property var replies: ({})
+    property var attachmentDrafts: ({})
+    function setAttachmentPaths(paths, key) {
+        if (!key) return;
+        const values = Object.assign({}, attachmentDrafts);
+        if (paths.length) values[key] = paths.slice(); else delete values[key];
+        attachmentDrafts = values;
+    }
     property var downloads: ({})
     property var automaticMediaAttempts: ({})
+    property var messageCache: ({})
+    property var messageRequests: ({})
+    property var messageReloads: ({})
+    property var confirmedMessages: ({})
+    property var visibleMediaIds: []
+    function cacheMessages(key, rows) {
+        const cache = Object.assign({}, messageCache);
+        delete cache[key]; cache[key] = rows;
+        while (Object.keys(cache).length > 12) delete cache[Object.keys(cache)[0]];
+        messageCache = cache;
+    }
+    function mergeMessages(key, incoming) {
+        const previous = messageCache[key] || [];
+        const paths = {};
+        previous.forEach(row => { if (row.mediaPath) paths[row.id] = row.mediaPath; });
+        const receipts = Object.assign({}, confirmedMessages[key] || {});
+        const rows = incoming.map(row => {
+            delete receipts[row.id];
+            return !row.mediaPath && paths[row.id] ? Object.assign({}, row, {mediaPath: paths[row.id]}) : row;
+        });
+        const now = Date.now();
+        Object.keys(receipts).forEach(id => {
+            if (now - receipts[id].receivedAt < 120000) rows.push(receipts[id].message);
+            else delete receipts[id];
+        });
+        confirmedMessages = Object.assign({}, confirmedMessages, {[key]: receipts});
+        rows.sort((a, b) => a.timestamp - b.timestamp);
+        return rows;
+    }
+    function acceptSentMessage(chat, result) {
+        if (!result.message?.id) return;
+        const receipt = Object.assign({}, confirmedMessages[chat.key] || {}, {[result.message.id]: {message: result.message, receivedAt: Date.now()}});
+        confirmedMessages = Object.assign({}, confirmedMessages, {[chat.key]: receipt});
+        const rows = (messageCache[chat.key] || []).filter(row => row.id !== result.message.id).concat([result.message]);
+        cacheMessages(chat.key, rows);
+        if (selectedChat?.key === chat.key && !historyContext) { messagesReplacing(); messages = rows; }
+    }
     property var activePlayer: null
     property string filter: "all"
     property string query: ""
@@ -43,6 +291,7 @@ PluginComponent {
     readonly property int unreadMessages: chats.reduce((sum, chat) => sum + chat.unread, 0)
     readonly property bool surfaceOpen: popout.shouldBeVisible || app.visible
     readonly property var matchingChats: chats.filter(chat => (filter === "all" || chat.provider === filter)
+        && (accountFilter === "all" || accountKey(chat.provider, chat.account) === accountFilter)
         && (chat.name + " " + chat.preview).toLowerCase().includes(query.trim().toLowerCase()))
     readonly property int unreadChatCount: matchingChats.filter(chat => chat.unread > 0).length
     readonly property var visibleChats: unreadOnly ? matchingChats.filter(chat => chat.unread > 0) : matchingChats
@@ -65,7 +314,7 @@ PluginComponent {
         if (p.status === "last_month") return I18n.trFor("dankChat", "Last seen within a month");
         return "";
     }
-    onSelectedChatChanged: { if (voiceState) discardVoice(); chatPresence = {}; Qt.callLater(loadPresence); }
+    onSelectedChatChanged: { closeBrowse(); if (voiceState) discardVoice(); chatPresence = {}; Qt.callLater(loadPresence); }
     function loadPresence() {
         if (demo || !surfaceOpen || !selectedChat || presenceBusy) return;
         const chat = selectedChat;
@@ -84,76 +333,132 @@ PluginComponent {
     }
     function sendRequest(provider, action, payload, callback) {
         if (!bridge.running || demo) return false;
-        if (["status", "chats"].includes(action) && Object.values(pending).some(entry => entry.provider === provider && entry.action === action)) return false;
+        const account = payload?.account ?? payload?.chat?.account ?? "";
+        if (["status", "chats"].includes(action) && Object.values(pending).some(entry => entry.provider === provider && entry.account === account && entry.action === action)) return false;
         const id = ++nextRequest;
-        const request = Object.assign({}, payload || {}, {provider: provider, action: action, requestId: id});
+        const request = Object.assign({}, payload || {}, {provider: provider, account: account, action: action, requestId: id});
         const epoch = configurationEpoch;
-        pending[id] = {provider: provider, action: action, callback: result => { if (epoch === configurationEpoch && callback) callback(result); }};
+        pending[id] = {provider: provider, account: account, action: action, started: Date.now(), callback: result => { if (epoch === configurationEpoch && callback) callback(result); }};
         bridge.write(JSON.stringify(request) + "\n");
         return true;
     }
     function configure() {
-        voiceState = ""; voicePath = "";
+        voiceState = ""; voicePath = ""; attachmentDrafts = {};
+        checkingUpdates = false; automaticReadAttempts = {}; readingLatest = false;
         markingRead = {}; reacting = {}; presenceBusy = false; chatPresence = {};
-        configurationEpoch++;
-        downloads = {}; automaticMediaAttempts = {};
+        configurationEpoch++; notificationSnapshots = {}; accountStatuses = {};
+        downloads = {}; automaticMediaAttempts = {}; messageCache = {}; messageRequests = {}; messageReloads = {}; confirmedMessages = {}; visibleMediaIds = [];
         loadingMessages = false;
-        chats = []; messages = []; selectedChat = null; statuses = {}; qrPath = "";
+        chats = []; messages = []; selectedChat = null; statuses = {}; syncFailures = {}; lastChecks = {}; qrPath = "";
         if (demo) { loadDemo(); return; }
         const enabled = [];
         if (telegramEnabled) enabled.push("telegram");
         if (whatsappEnabled) enabled.push("whatsapp");
-        sendRequest("", "configure", {enabled: enabled}, () => refresh());
+        sendRequest("", "configure", {enabled: enabled}, result => { if (result.accounts) accounts = result.accounts; refresh(); });
+        sendRequest("", "app_info", {}, result => { if (result.ok) appInfo = result; });
     }
-    function refresh() {
-        if (demo) return;
-        ["telegram", "whatsapp"].forEach(provider => {
-            if ((provider === "telegram" && !telegramEnabled) || (provider === "whatsapp" && !whatsappEnabled)) return;
-            if (accountBusy[provider]) return;
-            sendRequest(provider, "status", {}, result => {
-                if (accountBusy[provider]) return;
-                const states = Object.assign({}, statuses); states[provider] = result; statuses = states;
-                if (provider === "telegram") qrPath = result.qrPath || "";
-                if (!result.authorized) {
-                    chats = chats.filter(chat => chat.provider !== provider);
-                    if (selectedChat?.provider === provider) { selectedChat = null; messages = []; }
-                    return;
+    function acceptProviderStatus(provider, result) {
+        if (!result.ok) {
+            syncFailures = Object.assign({}, syncFailures, {[provider]: true});
+            if (selectedChat?.provider === provider) chatPresence = {};
+            return false;
+        }
+        const failures = Object.assign({}, syncFailures); delete failures[provider]; syncFailures = failures;
+        statuses = Object.assign({}, statuses, {[provider]: result});
+        reconnectAttempts = 0; reconnecting = false;
+        if (!interruptedWrite && errorText === I18n.trFor("dankChat", "The chat service stopped. Reconnecting; check the conversation before retrying a send.")) errorText = "";
+        if (provider === "telegram") qrPath = result.qrPath || "";
+        if (result.authorized === false) {
+            const cache = Object.assign({}, messageCache), sent = Object.assign({}, confirmedMessages);
+            Object.keys(cache).forEach(key => {
+                let owner, account = "";
+                try { const parts = JSON.parse(key); owner = parts[0]; account = parts[1]; } catch (e) { owner = key.startsWith(provider) ? provider : ""; }
+                if (owner === provider && !account) { delete cache[key]; delete sent[key]; }
+            });
+            messageCache = cache; confirmedMessages = sent;
+            chats = chats.filter(chat => chat.provider !== provider || !!chat.account);
+            if (selectedChat?.provider === provider && !selectedChat.account) { selectedChat = null; messages = []; }
+            return false;
+        }
+        return result.authorized === true;
+    }
+    function refreshProvider(provider) {
+        if (demo || (provider === "telegram" && !telegramEnabled) || (provider === "whatsapp" && !whatsappEnabled)) return;
+        accounts.filter(a => a.provider === provider).forEach(account => {
+            const identity = accountKey(provider, account.id);
+            if (accountBusy[identity]) return;
+            sendRequest(provider, "status", {account: account.id}, result => {
+                if (accountBusy[identity]) return;
+                accountStatuses = Object.assign({}, accountStatuses, {[identity]: result});
+                if (!account.id) {
+                    if (!acceptProviderStatus(provider, result)) return;
+                } else if (!result.ok) {
+                    syncFailures = Object.assign({}, syncFailures, {[identity]: true}); return;
+                } else {
+                    const failures = Object.assign({}, syncFailures); delete failures[identity]; syncFailures = failures;
+                    if (!result.authorized) {
+                        chats = chats.filter(c => accountKey(c.provider, c.account) !== identity);
+                        if (selectedChat && accountKey(selectedChat.provider, selectedChat.account) === identity) { selectedChat = null; messages = []; }
+                        return;
+                    }
                 }
-                if (provider === "telegram") qrPath = "";
-                sendRequest(provider, "chats", {}, result => {
-                    if (!result.ok) { errorText = result.error || ""; return; }
-                    chats = chats.filter(chat => chat.provider !== provider).concat(result.chats || [])
+                sendRequest(provider, "chats", {account: account.id}, result => {
+                    if (!result.ok) { syncFailures = Object.assign({}, syncFailures, {[identity]: true}); return; }
+                    const incoming = (result.chats || []).map(chat => syncReadEnabled(chat) ? Object.assign({}, chat, {unread: chat.serverUnread ?? chat.unread}) : chat);
+                    considerNotifications(incoming, identity);
+                    const failures = Object.assign({}, syncFailures); delete failures[identity]; syncFailures = failures;
+                    const updated = chats.filter(c => accountKey(c.provider, c.account) !== identity).concat(incoming)
                         .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.timestamp - a.timestamp || a.key.localeCompare(b.key));
+                    if (JSON.stringify(updated) !== JSON.stringify(chats)) chats = updated;
+                    lastChecks = Object.assign({}, lastChecks, {[identity]: Date.now()});
+                    if (surfaceOpen && selectedChat && accountKey(selectedChat.provider, selectedChat.account) === identity) loadMessages();
+                    if (changedProviders[provider]) providerUpdateTimer.restart();
                 });
             });
         });
-        if (surfaceOpen && selectedChat) loadMessages();
+    }
+    function refresh() {
+        if (demo) return;
+        ["telegram", "whatsapp"].forEach(provider => refreshProvider(provider));
     }
     function selectChat(chat) {
-        historyContext = false;
-        selectedChat = chat; messages = []; errorText = "";
-        automaticMediaAttempts = {};
+        historyContext = false; readingLatest = false;
+        const attempts = Object.assign({}, automaticReadAttempts); delete attempts[chat.key]; automaticReadAttempts = attempts;
+        selectedChat = chat; messages = messageCache[chat.key] || []; errorText = "";
+        visibleMediaIds = []; loadingMessages = false;
         if (demo) { demoMessages(); return; }
         loadMessages();
-        if (chat.provider === "telegram" && readReceipts)
-            sendRequest("telegram", "read", {chat: chat}, result => { if (!result.ok) errorText = result.error; });
-        if (chat.provider === "whatsapp")
-            sendRequest("whatsapp", "acknowledge", {chat: chat}, result => { if (!result.ok) errorText = result.error; });
+        if (chat.provider === "whatsapp" && !syncReadEnabled(chat))
+            sendRequest("whatsapp", "acknowledge", {chat: chat}, result => { if (!result.ok) errorText = I18n.trFor("dankChat", result.error); else refreshProvider("whatsapp"); });
     }
-    function loadMessages() {
-        if (!selectedChat || loadingMessages || historyContext || demo) return;
+    function loadMessages(force) {
+        if (!selectedChat || historyContext || demo) return;
         const chat = selectedChat;
+        if (messageRequests[chat.key]) {
+            if (force) messageReloads[chat.key] = true;
+            loadingMessages = true; return;
+        }
+        const token = nextRequest + 1;
+        messageRequests[chat.key] = token;
         loadingMessages = true;
         if (!sendRequest(chat.provider, "messages", {chat: chat}, result => {
-            loadingMessages = false;
-            if (selectedChat?.key !== chat.key) { loadMessages(); return; }
-            if (historyContext) return;
+            if (messageRequests[chat.key] !== token) return;
+            delete messageRequests[chat.key];
+            const again = messageReloads[chat.key]; delete messageReloads[chat.key];
+            const current = selectedChat?.key === chat.key;
+            if (current) loadingMessages = false;
             if (result.ok) {
-                const incoming = result.messages || [];
-                if (JSON.stringify(incoming) !== JSON.stringify(messages)) { messagesReplacing(); messages = incoming; }
-                Qt.callLater(loadNextMedia);
-            } else errorText = result.error || "";
-        })) loadingMessages = false;
+                const incoming = mergeMessages(chat.key, result.messages || []);
+                cacheMessages(chat.key, incoming);
+                if (current && !historyContext) {
+                    if (JSON.stringify(incoming) !== JSON.stringify(messages)) { messagesReplacing(); messages = incoming; }
+                    Qt.callLater(loadNextMedia);
+                    Qt.callLater(readVisibleChat);
+                }
+            } else if (current) errorText = result.error ? I18n.trFor("dankChat", result.error) : "";
+            if (again && current) loadMessages();
+        })) { delete messageRequests[chat.key]; loadingMessages = false; }
+        Qt.callLater(loadNextMedia);
     }
     function jumpToReply(messageId) {
         if (!selectedChat || !messageId) return;
@@ -172,7 +477,7 @@ PluginComponent {
     }
     function showLatest() {
         historyContext = false;
-        loadMessages();
+        loadMessages(true);
     }
     function setDraft(text) {
         if (!selectedChat) return;
@@ -190,9 +495,12 @@ PluginComponent {
         const chat = selectedChat;
         const text = draft;
         writing = true; errorText = "";
+        transferState(chat.key + ":send", "Sending…");
         if (!sendRequest(chat.provider, path ? "file" : "send", {chat: chat, text: text, path: path || "", replyId: reply?.id || ""}, result => {
             writing = false;
-            if (!result.ok) { errorText = result.error; return; }
+            if (!result.ok) { transferState(chat.key + ":send", "Not confirmed — check the conversation"); errorText = I18n.trFor("dankChat", result.error); return; }
+            transferState(chat.key + ":send", "Sent");
+            acceptSentMessage(chat, result);
             const values = Object.assign({}, drafts);
             if (values[chat.key] === text) values[chat.key] = "";
             drafts = values;
@@ -264,6 +572,8 @@ PluginComponent {
             const values = Object.assign({}, replies);
             if (values[chat.key]?.id === message.id) delete values[chat.key];
             replies = values;
+            cacheMessages(chat.key, (messageCache[chat.key] || []).filter(row => row.id !== message.id));
+            if (confirmedMessages[chat.key]) delete confirmedMessages[chat.key][message.id];
             if (selectedChat?.key === chat.key) messages = messages.filter(row => row.id !== message.id);
             refresh();
         })) writing = false;
@@ -277,12 +587,22 @@ PluginComponent {
         writing = true; errorText = "";
         let sent = 0;
         const stop = () => { writing = false; finished(sent); if (selectedChat?.key === chat.key) showLatest(); };
+        const states = Object.assign({}, transferStates);
+        Object.keys(states).filter(key => key.startsWith(chat.key + ":file:")).forEach(key => delete states[key]);
+        transferStates = states;
+        paths.forEach((path, i) => transferState(chat.key + ":file:" + i, "Waiting"));
         const next = () => {
+            transferState(chat.key + ":file:" + sent, "Uploading…");
             if (!sendRequest(chat.provider, "file", {chat: chat, path: paths[sent], text: sent === 0 ? text : "", replyId: replyId}, result => {
                 if (!result.ok) {
+                    transferState(chat.key + ":file:" + sent, "Not confirmed — check the conversation");
+                    paths.slice(sent + 1).forEach((path, i) => transferState(chat.key + ":file:" + (sent + i + 1), "Not sent"));
                     errorText = I18n.trFor("dankChat", "Attachment sending stopped. Check the chat before retrying.") + " (" + sent + "/" + paths.length + ") " + (result.error ? I18n.trFor("dankChat", result.error) : "");
                     stop(); return;
                 }
+                transferState(chat.key + ":file:" + sent, "Sent");
+                acceptSentMessage(chat, result);
+                if (selectedChat?.key === chat.key) showLatest();
                 sent++;
                 if (sent === 1) {
                     const values = Object.assign({}, drafts);
@@ -297,59 +617,75 @@ PluginComponent {
         };
         next();
     }
-    function accountAction(provider, action) {
-        if (demo || accountBusy[provider]) return;
+    function accountAction(provider, action, account) {
+        account = account || "";
+        const identity = accountKey(provider, account);
+        if (demo || accountBusy[identity]) return;
         errorText = "";
-        const busy = Object.assign({}, accountBusy); busy[provider] = true; accountBusy = busy;
-        const finish = () => { const busy = Object.assign({}, accountBusy); delete busy[provider]; accountBusy = busy; };
-        if (!sendRequest(provider, action, {}, result => {
+        const busy = Object.assign({}, accountBusy); busy[identity] = true; accountBusy = busy;
+        const finish = () => { const busy = Object.assign({}, accountBusy); delete busy[identity]; accountBusy = busy; };
+        if (!sendRequest(provider, action, {account: account}, result => {
             finish();
-            if (!result.ok) { errorText = result.error; refresh(); return; }
+            if (!result.ok) { errorText = I18n.trFor("dankChat", result.error); refresh(); return; }
             if (action === "logout") {
-                const keys = chats.filter(chat => chat.provider === provider).map(chat => chat.key);
+                messageCache = {}; confirmedMessages = {};
+                const keys = chats.filter(chat => chat.provider === provider && (chat.account || "") === account).map(chat => chat.key);
                 const d = Object.assign({}, drafts), r = Object.assign({}, replies);
                 keys.forEach(key => { delete d[key]; delete r[key]; }); drafts = d; replies = r;
-                chats = chats.filter(chat => chat.provider !== provider);
-                if (selectedChat?.provider === provider) { selectedChat = null; messages = []; }
+                chats = chats.filter(chat => chat.provider !== provider || (chat.account || "") !== account);
+                if (selectedChat?.provider === provider && (selectedChat.account || "") === account) { selectedChat = null; messages = []; }
                 const states = Object.assign({}, statuses); states[provider] = {authorized: false}; statuses = states;
             }
             refresh();
         })) finish();
     }
     function loginTelegram() { accountAction("telegram", "login"); }
-    function submitPassword(password) {
-        sendRequest("telegram", "password", {password: password}, result => {
-            if (!result.ok) errorText = result.error;
+    function submitPassword(password, account) {
+        sendRequest("telegram", "password", {password: password, account: account || ""}, result => {
+            if (!result.ok) errorText = I18n.trFor("dankChat", result.error);
             else refresh();
         });
     }
-    onSurfaceOpenChanged: { if (surfaceOpen) { Qt.callLater(loadNextMedia); Qt.callLater(loadPresence); } else { chatPresence = {}; if (voiceState === "recording") stopVoice(); } }
+    Timer { interval: 3600000; running: !root.demo; repeat: true; onTriggered: root.storageAction(true, false) }
+    onSurfaceOpenChanged: { if (surfaceOpen) { if (automaticUpdates) checkUpdates(false); Qt.callLater(loadNextMedia); Qt.callLater(loadPresence); } else { chatPresence = {}; if (voiceState === "recording") stopVoice(); } }
     function loadNextMedia() {
-        if (!surfaceOpen || demo || !selectedChat || accountBusy[selectedChat.provider] || Object.keys(downloads).length) return;
+        if (!automaticMedia || !surfaceOpen || demo || !selectedChat || accountBusy[accountKey(selectedChat.provider, selectedChat.account)] || writing) return;
         const types = ["photo", "image", "video", "sticker", "gif", "audio", "voice", "ptt"];
-        for (let i = messages.length - 1; i >= 0; --i) {
-            const message = messages[i];
+        const limit = selectedChat.provider === "telegram" ? 2 : 1;
+        let available = limit - Object.keys(downloads).filter(key => downloads[key] === selectedChat.provider).length;
+        if (available <= 0) return;
+        // Start visible attachments first, then the newest ones. A video must
+        // not monopolize all Telegram slots while visible photos are waiting.
+        const candidates = messages.slice().reverse().sort((a, b) => Number(visibleMediaIds.includes(b.id)) - Number(visibleMediaIds.includes(a.id)));
+        for (const message of candidates) {
             const key = selectedChat.key + ":" + message.id;
-            if (!message.mediaPath && message.mediaDownloadable !== false && types.includes(message.mediaType) && !automaticMediaAttempts[key]) {
+            if (mediaTypes.includes(mediaGroup(message.mediaType)) && (message.mediaSize === undefined || (message.mediaSize > 0 && message.mediaSize <= mediaLimitMb * 1048576)) && !message.mediaPath && message.mediaDownloadable !== false && types.includes(message.mediaType) && !automaticMediaAttempts[key] && !downloads[key]) {
                 automaticMediaAttempts[key] = true;
+                while (Object.keys(automaticMediaAttempts).length > 1000) delete automaticMediaAttempts[Object.keys(automaticMediaAttempts)[0]];
                 downloadMedia(message, true);
-                return;
+                if (--available <= 0) return;
             }
         }
     }
+    onWritingChanged: if (!writing) Qt.callLater(loadNextMedia)
     function downloadMedia(message, automatic) {
         if (!selectedChat || demo) return;
         const chat = selectedChat;
         const key = chat.key + ":" + message.id;
         if (downloads[key]) return;
-        const active = Object.assign({}, downloads); active[key] = true; downloads = active;
+        transferState(key, "Downloading…");
+        const active = Object.assign({}, downloads); active[key] = chat.provider; downloads = active;
         if (!automatic) errorText = "";
         if (!sendRequest(chat.provider, "download", {chat: chat, messageId: message.id, mediaType: message.mediaType}, result => {
             const active = Object.assign({}, downloads); delete active[key]; downloads = active;
-            if (!result.ok) { if (!automatic || !errorText) errorText = I18n.trFor("dankChat", result.error); Qt.callLater(loadNextMedia); return; }
-            if (selectedChat?.key === chat.key && result.path) {
-                messagesReplacing();
-                messages = messages.map(row => row.id === message.id ? Object.assign({}, row, {mediaPath: result.path}) : row);
+            if (!result.ok) { transferState(key, "Download failed"); if (selectedChat?.key === chat.key && (!automatic || !errorText)) errorText = I18n.trFor("dankChat", result.error); Qt.callLater(loadNextMedia); return; }
+            if (result.path) {
+                transferState(key, "Downloaded");
+                cacheMessages(chat.key, (messageCache[chat.key] || []).map(row => row.id === message.id ? Object.assign({}, row, {mediaPath: result.path}) : row));
+                if (selectedChat?.key === chat.key) {
+                    messagesReplacing();
+                    messages = messages.map(row => row.id === message.id ? Object.assign({}, row, {mediaPath: result.path}) : row);
+                }
                 Qt.callLater(loadNextMedia);
             } else if (selectedChat?.key === chat.key && !historyContext) loadMessages();
             else Qt.callLater(loadNextMedia);
@@ -361,7 +697,7 @@ PluginComponent {
         if (demo || !chat || !message) return;
         errorText = "";
         sendRequest(chat.provider, "export", {chat: chat, messageId: message.id, destination: destination}, result => {
-            if (!result.ok) errorText = result.error;
+            if (!result.ok) errorText = I18n.trFor("dankChat", result.error);
             else ToastService.showInfo(I18n.trFor("dankChat", "Media saved"), destination);
         });
     }
@@ -386,17 +722,17 @@ PluginComponent {
         })) finish();
     }
     property var markingRead: ({})
-    function markChatRead(chat) {
+    function markChatRead(chat, messageId) {
         if (demo || !chat || markingRead[chat.key]) return;
         markingRead = Object.assign({}, markingRead, {[chat.key]: true});
         const finish = () => {
             const active = Object.assign({}, markingRead);
             delete active[chat.key]; markingRead = active;
         };
-        if (!sendRequest(chat.provider, "read", {chat: chat}, result => {
+        if (!sendRequest(chat.provider, "read", {chat: chat, messageId: messageId || ""}, result => {
             finish();
-            if (!result.ok) { errorText = result.error; return; }
-            chats = chats.map(row => row.key === chat.key ? Object.assign({}, row, {unread: 0}) : row);
+            if (!result.ok) { errorText = I18n.trFor("dankChat", result.error); return; }
+            chats = chats.map(row => row.key === chat.key ? Object.assign({}, row, {unread: 0, serverUnread: 0}) : row);
             refresh();
         })) finish();
     }
@@ -440,7 +776,7 @@ PluginComponent {
         ];
     }
 
-    onDemoChanged: { pending = {}; writing = false; loadingMessages = false; configure(); }
+    onDemoChanged: { reconnectTimer.stop(); reconnectAttempts = 0; bridge.running = !demo; pending = {}; writing = false; loadingMessages = false; configure(); }
     onTelegramEnabledChanged: configure()
     onWhatsappEnabledChanged: configure()
     Connections {
@@ -459,21 +795,36 @@ PluginComponent {
             onRead: line => {
                 try {
                     const result = JSON.parse(line);
+                    if (result.event === "provider_changed") { root.providerChanged(result.provider); return; }
                     const entry = root.pending[result.requestId];
                     delete root.pending[result.requestId];
-                    if (entry) entry.callback(result);
+                    if (entry) {
+                        root.diagnosticRequests = root.diagnosticRequests.concat([{provider: entry.provider, action: entry.action, ok: !!result.ok, durationMs: Date.now() - entry.started}]).slice(-50);
+                        entry.callback(result);
+                    }
                 } catch (e) { root.errorText = I18n.trFor("dankChat", "Could not read the service response."); }
             }
         }
         stderr: StdioCollector {}
         onExited: {
-            root.voiceState = ""; root.voicePath = "";
+            root.interruptedWrite = root.writing;
+            root.voiceState = ""; root.voicePath = ""; root.attachmentDrafts = {};
             root.pending = {}; root.writing = false; root.loadingMessages = false; root.markingRead = {}; root.reacting = {}; root.presenceBusy = false; root.chatPresence = {};
-            if (!root.demo) root.errorText = I18n.trFor("dankChat", "The chat service stopped. Reload DankChat to reconnect.");
+            if (!root.demo) {
+                root.syncFailures = {telegram: true, whatsapp: true};
+                root.reconnecting = true;
+                root.errorText = I18n.trFor("dankChat", "The chat service stopped. Reconnecting; check the conversation before retrying a send.");
+                if (root.reconnectAttempts < 5) reconnectTimer.start();
+            }
         }
     }
+    Timer {
+        interval: 1500; repeat: true
+        running: !root.demo && root.surfaceOpen && root.selectedChat?.provider === "whatsapp" && !root.accountBusy.whatsapp
+        onTriggered: root.loadMessages()
+    }
     Timer { interval: root.accountsOpen ? 2000 : root.surfaceOpen ? 5000 : 30000; running: !root.demo; repeat: true; onTriggered: root.refresh() }
-    DankPopoutStandalone {
+    DankPopout {
         id: popout
         popupWidth: 760
         popupHeight: 590
@@ -518,7 +869,9 @@ PluginComponent {
         function open(): void { root.openWindow(); }
         function close(): void { popout.close(); app.visible = false; }
         function refresh(): void { root.refresh(); }
-        function accounts(): void { root.accountsOpen = true; root.openWindow(); }
+        function settings(): void { root.settingsOpen = true; root.accountsOpen = false; root.openWindow(); }
+        function syncReadState(enabled: bool): void { root.savePreference("telegramReadReceipts", enabled); root.savePreference("whatsappReadState", enabled); }
+        function accounts(): void { root.settingsOpen = false; root.accountsOpen = true; root.openWindow(); }
         function preview(): string {
             if (!root.demo || !app.visible) return "Demo window must be open.";
             windowView.item.grabToImage(result => result.saveToFile(Quickshell.env("HOME") + "/.cache/dankchat-preview.png"));
@@ -530,6 +883,7 @@ PluginComponent {
             const component = Qt.createComponent(Qt.resolvedUrl("ChatView.qml") + "?revision=" + root.viewRevision);
             return JSON.stringify({status: windowView.status, width: windowView.width, height: windowView.height, loaded: !!windowView.item, error: component.errorString(), mediaErrors: ["MediaPreview.qml", "MediaPlayerView.qml"].map(file => Qt.createComponent(Qt.resolvedUrl(file) + "?revision=" + root.viewRevision).errorString())});
         }
-        function status(): string { return JSON.stringify({demo: root.demo, window: app.visible, dropdown: popout.shouldBeVisible, bridge: bridge.running, pending: Object.keys(root.pending).length, telegram: !!root.statuses.telegram?.authorized, whatsapp: !!root.statuses.whatsapp?.authorized, telegramAuthState: root.statuses.telegram?.authState || ""}); }
+        function diagnostics(): string { return JSON.stringify(root.diagnosticRequests); }
+        function status(): string { return JSON.stringify({demo: root.demo, window: app.visible, dropdown: popout.shouldBeVisible, bridge: bridge.running, pending: Object.keys(root.pending).length, telegram: !!root.statuses.telegram?.authorized, whatsapp: !!root.statuses.whatsapp?.authorized, telegramAuthState: root.statuses.telegram?.authState || "", accounts: root.accounts.length, readSync: {telegram: root.readReceipts, whatsapp: root.whatsappReadState}}); }
     }
 }

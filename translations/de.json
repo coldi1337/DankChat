@@ -418,5 +418,326 @@
   },
   "The selected chat changed. Select the message again.": {
     "The selected chat changed. Select the message again.": "Der ausgewählte Chat hat sich geändert. Wähle die Nachricht erneut."
+  },
+  "This clipboard image format is not supported. Copy it as PNG or attach the file.": {
+    "This clipboard image format is not supported. Copy it as PNG or attach the file.": "Dieses Bildformat aus der Zwischenablage wird nicht unterstützt. Kopiere es als PNG oder hänge die Datei an."
+  },
+  "Image support is missing. Run scripts/setup-telegram.": {
+    "Image support is missing. Run scripts/setup-telegram.": "Die Bildunterstützung fehlt. Führe scripts/setup-telegram aus."
+  },
+  "The clipboard image could not be decoded or is too large. Copy it again or attach the file.": {
+    "The clipboard image could not be decoded or is too large. Copy it again or attach the file.": "Das Bild aus der Zwischenablage ist beschädigt oder zu groß. Kopiere es erneut oder hänge die Datei an."
+  },
+  "The service is temporarily unavailable. Please try again.": {
+    "The service is temporarily unavailable. Please try again.": "Der Dienst ist vorübergehend nicht erreichbar. Bitte versuche es erneut."
+  },
+  "Connection interrupted — retrying": {
+    "Connection interrupted — retrying": "Verbindung unterbrochen – neuer Versuch"
+  },
+  "Sync service is starting": {
+    "Sync service is starting": "Synchronisierung wird gestartet"
+  },
+  "Last checked": {
+    "Last checked": "Zuletzt geprüft"
+  },
+  "Reconnect": {
+    "Reconnect": "Erneut verbinden"
+  },
+  "The chat service stopped. Reconnecting; check the conversation before retrying a send.": {
+    "The chat service stopped. Reconnecting; check the conversation before retrying a send.": "Der Chatdienst wurde beendet. Die Verbindung wird wiederhergestellt; prüfe den Chat vor einem erneuten Sendeversuch."
+  },
+  "Pending attachments": {
+    "Pending attachments": "Ausstehende Anhänge"
+  },
+  "Sync service running": {
+    "Sync service running": "Synchronisierungsdienst läuft"
+  },
+  "DankChat requires wacli 0.17.1 or newer with a compatible command interface.": {
+    "DankChat requires wacli 0.17.1 or newer with a compatible command interface.": "DankChat benötigt wacli 0.17.1 oder neuer mit kompatibler Befehlsschnittstelle."
+  },
+  "This wacli build is missing commands required by DankChat. Install the recommended release from the README.": {
+    "This wacli build is missing commands required by DankChat. Install the recommended release from the README.": "Dieser wacli-Version fehlen benötigte Befehle. Installiere die empfohlene Version aus der README."
+  },
+  "Install wacli 0.17.1 or newer first.": {
+    "Install wacli 0.17.1 or newer first.": "Installiere zuerst wacli 0.17.1 oder neuer."
+  },
+  "Account name": {
+    "Account name": "Kontoname"
+  },
+  "Add another account": {
+    "Add another account": "Weiteres Konto hinzufügen"
+  },
+  "Automatic download limit": {
+    "Automatic download limit": "Limit für automatische Downloads"
+  },
+  "Cache limit": {
+    "Cache limit": "Cache-Limit"
+  },
+  "Chats and media": {
+    "Chats and media": "Chats und Medien"
+  },
+  "Check GitHub for updates daily": {
+    "Check GitHub for updates daily": "Täglich auf GitHub nach Updates suchen"
+  },
+  "Check for updates": {
+    "Check for updates": "Nach Updates suchen"
+  },
+  "Checking for updates…": {
+    "Checking for updates…": "Updates werden gesucht…"
+  },
+  "Clean downloaded media": {
+    "Clean downloaded media": "Heruntergeladene Medien bereinigen"
+  },
+  "Cleanup keeps media in the open conversation and never removes original files or account data.": {
+    "Cleanup keeps media in the open conversation and never removes original files or account data.": "Die Bereinigung behält Medien im geöffneten Chat. Originaldateien und Kontodaten werden nicht gelöscht."
+  },
+  "Close": {
+    "Close": "Schließen"
+  },
+  "Close dropdown when focus leaves": {
+    "Close dropdown when focus leaves": "Dropdown beim Fokuswechsel schließen"
+  },
+  "Close the current view": {
+    "Close the current view": "Aktuelle Ansicht schließen"
+  },
+  "Connection and diagnostics": {
+    "Connection and diagnostics": "Verbindung und Diagnose"
+  },
+  "Diagnostic report saved": {
+    "Diagnostic report saved": "Diagnosebericht gespeichert"
+  },
+  "Disconnect": {
+    "Disconnect": "Trennen"
+  },
+  "Disconnect this account from DankChat?": {
+    "Disconnect this account from DankChat?": "Dieses Konto von DankChat trennen?"
+  },
+  "Downloaded media": {
+    "Downloaded media": "Heruntergeladene Medien"
+  },
+  "Edit message": {
+    "Edit message": "Nachricht bearbeiten"
+  },
+  "Edited": {
+    "Edited": "Bearbeitet"
+  },
+  "Files with an unknown size require a manual download.": {
+    "Files with an unknown size require a manual download.": "Dateien mit unbekannter Größe müssen manuell heruntergeladen werden."
+  },
+  "Keyboard shortcuts": {
+    "Keyboard shortcuts": "Tastenkürzel"
+  },
+  "Language follows your DMS settings.": {
+    "Language follows your DMS settings.": "Die Sprache richtet sich nach deinen DMS-Einstellungen."
+  },
+  "Load media automatically": {
+    "Load media automatically": "Medien automatisch laden"
+  },
+  "Load more": {
+    "Load more": "Mehr laden"
+  },
+  "Local development changes": {
+    "Local development changes": "Lokale Entwicklungsänderungen"
+  },
+  "Mark WhatsApp chats as read on all your devices when reading them here.": {
+    "Mark WhatsApp chats as read on all your devices when reading them here.": "WhatsApp-Chats beim Lesen hier auf allen deinen Geräten als gelesen markieren."
+  },
+  "Media": {
+    "Media": "Medien"
+  },
+  "Mentions-only notifications currently require Telegram. WhatsApp stays silent in this mode.": {
+    "Mentions-only notifications currently require Telegram. WhatsApp stays silent in this mode.": "Benachrichtigungen nur für Erwähnungen sind derzeit für Telegram verfügbar. WhatsApp bleibt in diesem Modus stumm."
+  },
+  "New message": {
+    "New message": "Neue Nachricht"
+  },
+  "Not checked yet": {
+    "Not checked yet": "Noch nicht geprüft"
+  },
+  "Not connected": {
+    "Not connected": "Nicht verbunden"
+  },
+  "Notification sound": {
+    "Notification sound": "Benachrichtigungston"
+  },
+  "Notifications": {
+    "Notifications": "Benachrichtigungen"
+  },
+  "Open releases": {
+    "Open releases": "Releases öffnen"
+  },
+  "Previous / next chat": {
+    "Previous / next chat": "Vorheriger / nächster Chat"
+  },
+  "Read synchronization and notification overrides are available for each account under Accounts.": {
+    "Read synchronization and notification overrides are available for each account under Accounts.": "Unter „Konten“ kannst du die Lesestatus-Synchronisation und Benachrichtigungen pro Konto einstellen."
+  },
+  "Remove downloads after": {
+    "Remove downloads after": "Downloads entfernen nach"
+  },
+  "Rename account": {
+    "Rename account": "Konto umbenennen"
+  },
+  "Reply to the latest message": {
+    "Reply to the latest message": "Auf die letzte Nachricht antworten"
+  },
+  "Save": {
+    "Save": "Speichern"
+  },
+  "Save diagnostic report…": {
+    "Save diagnostic report…": "Diagnosebericht speichern…"
+  },
+  "Search messages": {
+    "Search messages": "Nachrichten durchsuchen"
+  },
+  "Settings": {
+    "Settings": "Einstellungen"
+  },
+  "Show message previews": {
+    "Show message previews": "Nachrichtenvorschau anzeigen"
+  },
+  "Silence the open chat": {
+    "Silence the open chat": "Geöffneten Chat stummschalten"
+  },
+  "Storage": {
+    "Storage": "Speicher"
+  },
+  "Synchronize read state with other devices": {
+    "Synchronize read state with other devices": "Lesestatus mit anderen Geräten synchronisieren"
+  },
+  "The report contains versions, connection states and request timings, without account names, messages or credentials.": {
+    "The report contains versions, connection states and request timings, without account names, messages or credentials.": "Der Bericht enthält Versionen, Verbindungszustände und Anfragezeiten, ohne Kontonamen, Nachrichten oder Zugangsdaten."
+  },
+  "Version and updates": {
+    "Version and updates": "Version und Updates"
+  },
+  "WhatsApp read synchronization": {
+    "WhatsApp read synchronization": "WhatsApp-Lesestatus synchronisieren"
+  },
+  "days": {
+    "days": "Tagen"
+  },
+  "Images and stickers": {
+    "Images and stickers": "Bilder und Sticker"
+  },
+  "Videos": {
+    "Videos": "Videos"
+  },
+  "Audio and voice messages": {
+    "Audio and voice messages": "Audio- und Sprachnachrichten"
+  },
+  "Files": {
+    "Files": "Dateien"
+  },
+  "Images": {
+    "Images": "Bilder"
+  },
+  "Links": {
+    "Links": "Links"
+  },
+  "Audio": {
+    "Audio": "Audio"
+  },
+  "Off": {
+    "Off": "Aus"
+  },
+  "Mentions only": {
+    "Mentions only": "Nur Erwähnungen"
+  },
+  "All messages": {
+    "All messages": "Alle Nachrichten"
+  },
+  "Use app setting": {
+    "Use app setting": "App-Einstellung verwenden"
+  },
+  "Update available": {
+    "Update available": "Update verfügbar"
+  },
+  "No newer release found": {
+    "No newer release found": "Kein neueres Release gefunden"
+  },
+  "Searching…": {
+    "Searching…": "Suche läuft…"
+  },
+  "Select a result to open it in the conversation.": {
+    "Select a result to open it in the conversation.": "Wähle ein Ergebnis, um es im Chat zu öffnen."
+  },
+  "No messages found.": {
+    "No messages found.": "Keine Nachrichten gefunden."
+  },
+  "Link account": {
+    "Link account": "Konto verbinden"
+  },
+  "Downloading…": {
+    "Downloading…": "Wird heruntergeladen…"
+  },
+  "Downloaded": {
+    "Downloaded": "Heruntergeladen"
+  },
+  "Download failed": {
+    "Download failed": "Download fehlgeschlagen"
+  },
+  "Uploading…": {
+    "Uploading…": "Wird hochgeladen…"
+  },
+  "Waiting": {
+    "Waiting": "Wartet"
+  },
+  "Not confirmed — check the conversation": {
+    "Not confirmed — check the conversation": "Nicht bestätigt – Chat überprüfen"
+  },
+  "Could not check GitHub for updates. Try again later.": {
+    "Could not check GitHub for updates. Try again later.": "GitHub konnte nicht auf Updates geprüft werden. Versuche es später erneut."
+  },
+  "WhatsApp rejected this media download. Open it on your phone; if it stays unavailable here, ask for it to be sent again.": {
+    "WhatsApp rejected this media download. Open it on your phone; if it stays unavailable here, ask for it to be sent again.": "WhatsApp hat diesen Download abgelehnt. Öffne das Medium am Smartphone. Falls es hier weiterhin nicht verfügbar ist, bitte um erneutes Senden."
+  },
+  "Invalid account.": {
+    "Invalid account.": "Ungültiges Konto."
+  },
+  "Invalid service.": {
+    "Invalid service.": "Ungültiger Dienst."
+  },
+  "The account configuration could not be read.": {
+    "The account configuration could not be read.": "Die Kontokonfiguration konnte nicht gelesen werden."
+  },
+  "Up to 20 accounts are supported.": {
+    "Up to 20 accounts are supported.": "Es werden bis zu 20 Konten unterstützt."
+  },
+  "Enter an account name of up to 48 characters.": {
+    "Enter an account name of up to 48 characters.": "Gib einen Kontonamen mit höchstens 48 Zeichen ein."
+  },
+  "Only your own messages can be edited.": {
+    "Only your own messages can be edited.": "Du kannst nur eigene Nachrichten bearbeiten."
+  },
+  "This message could not be edited. Check the time limit and your permissions.": {
+    "This message could not be edited. Check the time limit and your permissions.": "Diese Nachricht konnte nicht bearbeitet werden. Prüfe die Zeitgrenze und deine Berechtigungen."
+  },
+  "Invalid storage limits.": {
+    "Invalid storage limits.": "Ungültige Speichergrenzen."
+  },
+  "Invalid search.": {
+    "Invalid search.": "Ungültige Suche."
+  },
+  "Invalid notification request.": {
+    "Invalid notification request.": "Ungültige Benachrichtigungsanfrage."
+  },
+  "Not sent": {
+    "Not sent": "Nicht gesendet"
+  },
+  "Sending…": {
+    "Sending…": "Wird gesendet…"
+  },
+  "This service is disabled.": {
+    "This service is disabled.": "Dieser Dienst ist deaktiviert."
+  },
+  "Image support is missing. Run python3 scripts/setup.": {
+    "Image support is missing. Run python3 scripts/setup.": "Die Bildunterstützung fehlt. Führe python3 scripts/setup aus."
+  },
+  "Telegram dependencies are missing. Run python3 scripts/setup.": {
+    "Telegram dependencies are missing. Run python3 scripts/setup.": "Die Telegram-Abhängigkeiten fehlen. Führe python3 scripts/setup aus."
+  },
+  "QR dependencies are missing. Run python3 scripts/setup.": {
+    "QR dependencies are missing. Run python3 scripts/setup.": "Die QR-Abhängigkeiten fehlen. Führe python3 scripts/setup aus."
   }
 }

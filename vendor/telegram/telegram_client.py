@@ -10,6 +10,7 @@ import signal
 import socket
 import re
 import hashlib
+import tempfile
 from datetime import datetime
 
 # Default Telegram API credentials (Official Telegram Android/Desktop public client IDs)
@@ -312,6 +313,8 @@ class TelegramBackend:
                 self.cached_avatars[ent_id] = avatar_file
                 return avatar_file
 
+            if not getattr(self, "automatic_media_downloads", True):
+                return ""
             path = await self.client.download_profile_photo(entity, file=avatar_file, download_big=False)
             if path and os.path.exists(path):
                 try:
@@ -330,6 +333,7 @@ class TelegramBackend:
             return []
         try:
             dialogs = await self.client.get_dialogs(limit=limit)
+            self.dialog_entities = {d.id: d.entity for d in dialogs}
             result = []
             total_unread = 0
 
@@ -441,6 +445,8 @@ class TelegramBackend:
             return self.dialogs_cache
 
     async def download_media_bg(self, media, target_path, thumb=None):
+        if not getattr(self, "automatic_media_downloads", True):
+            return ""
         try:
             if not os.path.exists(target_path):
                 kwargs = {"file": target_path}
@@ -488,7 +494,7 @@ class TelegramBackend:
                         sender_color = cached["color"]
                     else:
                         try:
-                            sender = await self.client.get_entity(m.sender_id)
+                            sender = getattr(m, "sender", None) or await self.client.get_entity(m.sender_id)
                             sender_name = getattr(sender, "first_name", "") or getattr(sender, "title", "") or getattr(sender, "username", "") or "User"
                             sender_avatar = ""
                             sender_color = get_avatar_color(sender_name)
@@ -540,6 +546,7 @@ class TelegramBackend:
                     "reply_to": (getattr(m.reply_to, "reply_to_top_id", None) or getattr(m.reply_to, "reply_to_msg_id", None)) if m.reply_to else None,
                     "media": bool(m.media),
                     "media_type": media_type,
+                    "file_size": getattr(getattr(m, "file", None), "size", 0) or 0,
                     "media_path": media_path,
                     "webpage": webpage_meta,
                 })
@@ -553,7 +560,7 @@ class TelegramBackend:
             return []
         try:
             cid = int(chat_id)
-            entity = await self.client.get_entity(cid)
+            entity = getattr(self, "dialog_entities", {}).get(cid) or await self.client.get_entity(cid)
             kwargs = {"limit": limit}
             if around_id is not None:
                 kwargs.update(offset_id=int(around_id) + 1, add_offset=-(limit // 2))
@@ -591,7 +598,7 @@ class TelegramBackend:
                         sender_color = cached["color"]
                     else:
                         try:
-                            sender = await self.client.get_entity(m.sender_id)
+                            sender = getattr(m, "sender", None) or await self.client.get_entity(m.sender_id)
                             sender_name = get_display_name(sender) or getattr(sender, "username", "") or "User"
                             sender_color = get_avatar_color(sender_name)
                             self.cached_senders[m.sender_id] = {"name": sender_name, "avatar": "", "color": sender_color}
@@ -751,6 +758,7 @@ class TelegramBackend:
                     "reactions": reactions_list,
                     "is_service": bool(getattr(m, "action", None)),
                     "media_type": media_type,
+                    "file_size": getattr(getattr(m, "file", None), "size", 0) or 0,
                     "media_path": media_path,
                     "media_thumb": media_thumb,
                     "media_info": media_info,
@@ -1277,7 +1285,15 @@ class TelegramBackend:
                 target_file = os.path.join(MEDIA_DIR, f"{media_type}_{mid}_{cid}{ext}")
                 if os.path.exists(target_file) and os.path.getsize(target_file) > 0:
                     return {"success": True, "file_path": target_file, "chat_id": cid, "message_id": mid, "media_type": media_type}
-                path = await self.client.download_media(msg.media, file=target_file)
+                # Never expose a partially written file to a simultaneous chat refresh.
+                with tempfile.TemporaryDirectory(prefix=".download-", dir=MEDIA_DIR) as staging:
+                    path = await self.client.download_media(msg.media, file=os.path.join(staging, os.path.basename(target_file)))
+                    if path and os.path.isfile(path) and os.path.getsize(path) > 0:
+                        os.chmod(path, 0o600)
+                        os.replace(path, target_file)
+                        path = target_file
+                    else:
+                        path = None
                 if path and os.path.exists(path):
                     try:
                         os.chmod(path, 0o600)

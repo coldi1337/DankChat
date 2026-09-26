@@ -38,6 +38,11 @@ StandardError=null
 if unit.exists() and unit.read_text() != content:
     raise SystemExit("A different DankChat sync unit exists; review it before replacing it.")
 unit.write_text(content)
+template = unit.with_name("dankchat-whatsapp@.service")
+template_content = content.replace(f'ExecStart=/bin/sh "{script}"', f'ExecStart=/bin/sh "{script}" "%i"')
+if template.exists() and template.read_text() != template_content:
+    raise SystemExit("A different DankChat account sync unit exists; review it before replacing it.")
+template.write_text(template_content)
 data = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share")))
 if not data.is_absolute():
     data = Path.home() / ".local/share"

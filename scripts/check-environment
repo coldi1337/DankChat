@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""Read-only DMS widget preflight; never changes settings or starts a session."""
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+
+def check_widgets(source):
+    return [name for name in ('DankPopout', 'DankFloatingWindow')
+            if not (source / 'Widgets' / (name + '.qml')).is_file()]
+
+
+def main():
+    configured = os.environ.get('DANKCHAT_DMS_SOURCE')
+    runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
+    candidates = [Path(configured)] if configured else sorted(
+        (runtime / 'danklinux-shell').glob('*/shell.qml'), key=lambda p: p.stat().st_mtime, reverse=True)
+    sources = [p.parent if p.name == 'shell.qml' else p for p in candidates]
+    sources += [] if configured else [Path('/usr/share/quickshell/dms')]
+    source = next((p for p in sources if (p / 'Widgets').is_dir()), None)
+    if source is None:
+        print('Cannot locate DMS sources. Set DANKCHAT_DMS_SOURCE to the directory containing shell.qml and Widgets.')
+        return 1
+    missing = check_widgets(source)
+    if missing:
+        print('Missing DMS widgets: ' + ', '.join(missing) + '. Update DMS to 1.6.1 or newer, restart the shell, then enable DankChat.')
+        return 1
+    print('DMS widgets available: ' + str(source))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

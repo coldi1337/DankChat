@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+"""Check a candidate wacli binary against disposable data, never real accounts."""
+import asyncio
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+root = Path(__file__).resolve().parents[1]
+sys.path[:0] = [str(root / 'backend'), str(root / 'vendor/whatsapp/bin')]
+from wacli_compat import check
+from whatsapp_client import Backend
+
+binary = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.home() / '.local/bin/wacli'
+print('Command interface:', asyncio.run(check(binary)))
+with tempfile.TemporaryDirectory(prefix='dankchat-wacli-test-') as directory:
+    base = Path(directory)
+    subprocess.run([str(binary), '--store', str(base / 'store'), '--json', 'chats', 'list'], check=True, capture_output=True, timeout=15)
+    backend = Backend(store_dir=base / 'store', state_dir=base / 'helper', wacli=binary, account_config=base / 'accounts.yaml')
+    result = backend.chats()
+    if not result.get('ok') or not all(account['ready'] for account in result['accounts']):
+        raise SystemExit('FAIL: incompatible chat index')
+    print('SQLite schema and chat adapter: PASS (disposable store, no messages sent)')

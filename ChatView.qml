@@ -24,16 +24,26 @@ Item {
     signal closeRequested()
     property bool receivedKeyboardFocus: false
     Connections {
+        target: root.service
+        function onReconnectingChanged() {
+            if (!root.service.reconnecting) return;
+            root.pastingClipboard = false;
+            attachmentConfirm.close();
+        }
+    }
+    Connections {
         target: root.Window.window
         function onActiveChanged() {
-            if (!root.compact) return;
+            if (!root.compact || root.service.closeOnBlur === false) return;
             if (root.Window.window.active) root.receivedKeyboardFocus = true;
             else if (root.receivedKeyboardFocus && !fileDialog.visible && !attachmentConfirm.visible && !mediaDialog.visible && !disconnectConfirm.visible && !deleteConfirm.visible) root.service.closeDropdown();
         }
     }
     focus: true
     Keys.onEscapePressed: {
-        if (service.accountsOpen) service.accountsOpen = false;
+        if (service.settingsOpen) service.settingsOpen = false;
+        else if (service.browseMode) service.closeBrowse();
+        else if (service.accountsOpen) service.accountsOpen = false;
         else if (narrow && service.selectedChat) service.selectedChat = null;
         else closeRequested();
     }
@@ -76,12 +86,15 @@ Item {
         property bool composerPaste: false
         signal replyRequested()
         signal deleteRequested()
+        signal editRequested()
+        property bool allowEdit: false
         width: 210
         padding: Theme.spacingXS
         popupType: Controls.Popup.Item
         background: Rectangle { radius: Theme.cornerRadius; color: Theme.surfaceContainer; border.color: Theme.outline; border.width: 1 }
         MenuEntry { visible: textMenu.allowReply; height: visible ? implicitHeight : 0; text: I18n.trFor("dankChat", "Reply"); onTriggered: textMenu.replyRequested() }
         MenuEntry { visible: textMenu.allowReply; height: visible ? implicitHeight : 0; text: I18n.trFor("dankChat", "Delete message…"); enabled: !root.service.demo && !root.service.writing; onTriggered: textMenu.deleteRequested() }
+        MenuEntry { visible: textMenu.allowEdit; height: visible ? implicitHeight : 0; text: I18n.trFor("dankChat", "Edit message"); onTriggered: textMenu.editRequested() }
         MenuEntry { text: I18n.trFor("dankChat", "Copy"); enabled: textMenu.editor.selectedText.length > 0; onTriggered: textMenu.editor.copy() }
         MenuEntry { visible: !textMenu.editor.readOnly; height: visible ? implicitHeight : 0; text: I18n.trFor("dankChat", "Cut"); enabled: textMenu.editor.selectedText.length > 0; onTriggered: textMenu.editor.cut() }
         MenuEntry { visible: !textMenu.editor.readOnly; height: visible ? implicitHeight : 0; text: I18n.trFor("dankChat", "Paste"); enabled: textMenu.composerPaste || textMenu.editor.canPaste; onTriggered: textMenu.composerPaste ? root.pasteClipboard() : textMenu.editor.paste() }
@@ -104,7 +117,8 @@ Item {
             Label { text: "DankChat"; font.pixelSize: Theme.fontSizeLarge; font.weight: Font.Medium }
             Label { visible: root.service.demo; text: I18n.trFor("dankChat", "Demo"); color: Theme.primary; font.pixelSize: Theme.fontSizeSmall }
             Item { Layout.fillWidth: true }
-            Action { iconName: "manage_accounts"; onClicked: root.service.accountsOpen = !root.service.accountsOpen }
+            Action { iconName: "settings"; tooltipText: I18n.trFor("dankChat", "Settings"); onClicked: { root.service.settingsOpen = !root.service.settingsOpen; root.service.accountsOpen = false; } }
+            Action { iconName: "manage_accounts"; onClicked: { root.service.accountsOpen = !root.service.accountsOpen; root.service.settingsOpen = false; } }
             Action { visible: root.compact; iconName: "open_in_new"; tooltipText: I18n.trFor("dankChat", "Open in window"); onClicked: root.expandRequested() }
             Action { iconName: "close"; onClicked: root.closeRequested() }
         }
@@ -118,127 +132,81 @@ Item {
             font.pixelSize: Theme.fontSizeSmall
         }
 
-        Controls.ScrollView {
-            id: accountsScroll
+        RowLayout {
+            Layout.fillWidth: true
+            visible: !root.service.demo && (!!root.service.reconnecting || Object.keys(root.service.syncFailures || {}).length > 0)
+            Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: I18n.trFor("dankChat", "Connection interrupted — retrying"); color: Theme.surfaceVariantText }
+            DankButton { text: I18n.trFor("dankChat", "Reconnect"); onClicked: root.service.retryConnection() }
+        }
+        AppSettings {
+            service: root.service
+            onExportRequested: { root.savingDiagnostics = true; root.savingMedia = true; fileDialog.open(); }
+            visible: !!root.service.settingsOpen
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+        }
+        AccountView {
+            service: root.service
             visible: root.service.accountsOpen
             Layout.fillWidth: true
             Layout.fillHeight: true
-            clip: true
-            ColumnLayout {
-                width: accountsScroll.availableWidth
-                spacing: Theme.spacingM
-                Label { text: I18n.trFor("dankChat", "Accounts"); font.pixelSize: Theme.fontSizeLarge }
-                Label { text: "Telegram"; font.weight: Font.Medium }
-                Label {
-                    Layout.fillWidth: true; wrapMode: Text.Wrap
-                    text: root.service.statuses.telegram?.authorized ? I18n.trFor("dankChat", "Connected")
-                        : I18n.trFor("dankChat", "Scan the QR code in Telegram → Settings → Devices.")
-                }
-                DankButton {
-                    text: root.service.statuses.telegram?.authorized ? I18n.trFor("dankChat", "Disconnect account") : I18n.trFor("dankChat", "Link Telegram")
-                    enabled: !root.service.demo && root.service.telegramEnabled && !root.service.accountBusy.telegram
-                    onClicked: {
-                        if (root.service.statuses.telegram?.authorized) { root.disconnectProvider = "telegram"; disconnectConfirm.open(); }
-                        else root.service.loginTelegram();
-                    }
-                }
-                Image {
-                    visible: root.service.qrPath.length > 0
-                    source: visible ? "file://" + root.service.qrPath : ""
-                    sourceSize: Qt.size(220, 220)
-                    Layout.preferredWidth: 220; Layout.preferredHeight: visible ? 220 : 0
-                    cache: false
-                }
-                Label {
-                    visible: root.service.statuses.telegram?.authState === "expired"
-                    text: I18n.trFor("dankChat", "QR code expired. Link Telegram again.")
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    visible: !root.service.statuses.telegram?.authorized && root.service.statuses.telegram?.authState === "password"
-                    DankTextField {
-                        id: password
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 100
-                        Layout.maximumWidth: 360
-                        Layout.preferredHeight: 44
-                        echoMode: TextInput.Password
-                        usePopupTransparency: root.compact
-                        backgroundColor: Theme.surfaceContainerHigh
-                        placeholderColor: Theme.surfaceVariantText
-                        textColor: Theme.surfaceText
-                        placeholderText: I18n.trFor("dankChat", "Telegram password")
-                    }
-                    DankButton { text: I18n.trFor("dankChat", "Sign in"); onClicked: { root.service.submitPassword(password.text); password.text = ""; } }
-                }
-                Rectangle { Layout.fillWidth: true; height: 1; color: Theme.outline; opacity: 0.3 }
-                Label { text: "WhatsApp"; font.weight: Font.Medium }
-                Label {
-                    Layout.fillWidth: true; wrapMode: Text.Wrap
-                    text: root.service.statuses.whatsapp?.authorized ? I18n.trFor("dankChat", "Connected")
-                        : I18n.trFor("dankChat", "Scan the QR code in WhatsApp → Linked devices → Link a device.")
-                }
-                DankButton {
-                    text: root.service.statuses.whatsapp?.authorized ? I18n.trFor("dankChat", "Disconnect account") : I18n.trFor("dankChat", "Link WhatsApp")
-                    enabled: !root.service.demo && root.service.whatsappEnabled && !root.service.accountBusy.whatsapp && (!root.service.statuses.whatsapp?.linking || root.service.statuses.whatsapp?.authorized)
-                    onClicked: {
-                        if (root.service.statuses.whatsapp?.authorized) { root.disconnectProvider = "whatsapp"; disconnectConfirm.open(); }
-                        else root.service.accountAction("whatsapp", "login");
-                    }
-                }
-                Image {
-                    visible: !!root.service.statuses.whatsapp?.qrPath
-                    source: visible ? Links.localFileUrl(root.service.statuses.whatsapp.qrPath) : ""
-                    sourceSize: Qt.size(220, 220)
-                    Layout.preferredWidth: 220; Layout.preferredHeight: visible ? 220 : 0
-                    cache: false
-                }
-                Label {
-                    Layout.fillWidth: true; wrapMode: Text.Wrap
-                    visible: ["waiting", "failed", "expired"].includes(root.service.statuses.whatsapp?.authState)
-                    text: root.service.statuses.whatsapp?.authState === "waiting" ? I18n.trFor("dankChat", "Waiting for scan…") : I18n.trFor("dankChat", "Linking failed or expired. Please try again.")
-                }
-                DankButton {
-                    visible: !!root.service.statuses.whatsapp?.linking && !root.service.statuses.whatsapp?.authorized
-                    text: I18n.trFor("dankChat", "Cancel")
-                    enabled: !root.service.accountBusy.whatsapp
-                    onClicked: root.service.accountAction("whatsapp", "cancel_login")
-                }
-                Label {
-                    Layout.fillWidth: true; wrapMode: Text.Wrap
-                    text: I18n.trFor("dankChat", "Account sessions stay on this device. Closing the window preserves your drafts until DankChat is reloaded.")
-                    color: Theme.surfaceVariantText
-                }
-            }
         }
 
         RowLayout {
-            visible: !root.service.accountsOpen
+            visible: !root.service.accountsOpen && !root.service.settingsOpen
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: Theme.spacingM
             ColumnLayout {
+                id: chatSidebar
                 visible: !root.narrow || !root.service.selectedChat
                 Layout.preferredWidth: root.narrow ? root.width : root.compact ? 240 : 285
                 Layout.fillWidth: root.narrow
                 Layout.fillHeight: true
                 spacing: Theme.spacingS
-                RowLayout {
+                Column {
+                    id: accountSelectors
+                    objectName: "accountSelectors"
+                    Layout.fillWidth: true
+                    spacing: Theme.spacingXS
+                    DankButton {
+                        objectName: "accountFilterButton"
+                        width: accountSelectors.width
+                        buttonHeight: 34
+                        text: I18n.trFor("dankChat", "All")
+                        backgroundColor: root.service.accountFilter === "all" ? Theme.primary : Theme.surfaceContainerHigh
+                        textColor: root.service.accountFilter === "all" ? Theme.primaryText : Theme.surfaceText
+                        onClicked: { root.service.accountFilter = "all"; root.service.filter = "all"; }
+                    }
                     Repeater {
-                        model: ["all", "telegram", "whatsapp"]
-                        DankButton {
-                            required property string modelData
-                            Layout.fillWidth: true
-                            horizontalPadding: Theme.spacingS
+                        model: (root.service.accounts || []).filter(a => a.provider === "telegram" ? root.service.telegramEnabled : root.service.whatsappEnabled)
+                        delegate: DankButton {
+                            id: accountButton
+                            required property var modelData
+                            objectName: "accountFilterButton"
+                            width: accountSelectors.width
                             buttonHeight: 34
-                            text: modelData === "all" ? I18n.trFor("dankChat", "All") : modelData === "telegram" ? "TG" : "WA"
-                            backgroundColor: root.service.filter === modelData ? Theme.primary : Theme.surfaceContainerHigh
-                            textColor: root.service.filter === modelData ? Theme.primaryText : Theme.surfaceText
-                            onClicked: root.service.filter = modelData
+                            readonly property string identity: root.service.accountKey(modelData.provider, modelData.id)
+                            readonly property string serviceSuffix: " · " + (modelData.provider === "telegram" ? "TG" : "WA")
+                            text: accountNameMetrics.elidedText + serviceSuffix
+                            Accessible.name: modelData.label + serviceSuffix
+                            TextMetrics {
+                                id: accountNameMetrics
+                                text: accountButton.modelData.label
+                                font.family: Theme.fontFamily; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium
+                                elide: Qt.ElideRight
+                                elideWidth: Math.max(0, accountButton.width - accountButton.horizontalPadding * 2 - serviceMetrics.advanceWidth)
+                            }
+                            TextMetrics { id: serviceMetrics; text: accountButton.serviceSuffix; font: accountNameMetrics.font }
+                            HoverHandler { onHoveredChanged: hovered ? deliveryTooltip.show(accountButton.Accessible.name, accountButton, 0, 0, "top") : deliveryTooltip.hide() }
+                            backgroundColor: root.service.accountFilter === identity ? Theme.primary : Theme.surfaceContainerHigh
+                            textColor: root.service.accountFilter === identity ? Theme.primaryText : Theme.surfaceText
+                            onClicked: { root.service.accountFilter = identity; root.service.filter = "all"; }
                         }
                     }
                 }
                 DankTextField {
+                    id: chatSearch
                     Layout.fillWidth: true
                     placeholderText: I18n.trFor("dankChat", "Search chats")
                     leftIconName: "search"
@@ -248,6 +216,7 @@ Item {
                 }
                 DankButton {
                     objectName: "unreadFilter"
+                    width: chatSidebar.width
                     Layout.fillWidth: true
                     buttonHeight: 34
                     iconName: "mark_chat_unread"
@@ -316,6 +285,10 @@ Item {
                                 onTriggered: root.service.markChatRead(chatRow.modelData)
                             }
                             MenuEntry {
+                                text: I18n.trFor("dankChat", "Notifications") + ": " + I18n.trFor("dankChat", root.service.notificationPolicy(chatRow.modelData) === "off" ? "Off" : root.service.notificationPolicy(chatRow.modelData) === "mentions" ? "Mentions only" : "All messages")
+                                onTriggered: root.service.cycleChatNotifications(chatRow.modelData)
+                            }
+                            MenuEntry {
                                 text: chatRow.modelData.pinned ? I18n.trFor("dankChat", "Unpin chat") : I18n.trFor("dankChat", "Pin chat")
                                 enabled: !root.service.demo
                                 onTriggered: root.service.togglePin(chatRow.modelData)
@@ -327,7 +300,7 @@ Item {
                         width: parent.width - 16; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
                         visible: chatList.count === 0
                         text: root.service.query.trim().length > 0 ? I18n.trFor("dankChat", "No chats found.")
-                            : (root.service.statuses.telegram?.authorized || root.service.statuses.whatsapp?.authorized)
+                            : (root.service.statuses.telegram?.authorized || root.service.statuses.whatsapp?.authorized || Object.values(root.service.accountStatuses || {}).some(s => s.authorized))
                                 ? (root.service.unreadOnly ? I18n.trFor("dankChat", "No unread chats.") : I18n.trFor("dankChat", "No chats available yet."))
                                 : I18n.trFor("dankChat", "No chats yet. Link an account to get started.")
                         color: Theme.surfaceVariantText
@@ -350,14 +323,18 @@ Item {
                         Label {
                             objectName: "chatPresenceLabel"
                             Layout.fillWidth: true
-                            text: root.service.selectedChat ? (root.service.selectedChat.provider === "telegram" ? "Telegram" : "WhatsApp") + (root.service.presenceText ? " · " + root.service.presenceText : "") : I18n.trFor("dankChat", "Choose a chat")
+                            text: root.service.selectedChat ? root.service.accountLabel(root.service.selectedChat) + " · " + (root.service.selectedChat.provider === "telegram" ? "TG" : "WA") + (root.service.presenceText ? " · " + root.service.presenceText : "") : I18n.trFor("dankChat", "Choose a chat")
                             elide: Text.ElideRight
                             color: Theme.surfaceVariantText; font.pixelSize: Theme.fontSizeSmall
                         }
                     }
+                    Action { objectName: "searchMessagesAction"; visible: !!root.service.selectedChat; iconName: "search"; tooltipText: I18n.trFor("dankChat", "Search messages"); Accessible.name: tooltipText; onClicked: root.service.browse("search", "", false) }
+                    Action { objectName: "browseMediaAction"; visible: !!root.service.selectedChat; iconName: "photo_library"; tooltipText: I18n.trFor("dankChat", "Media"); Accessible.name: tooltipText; onClicked: root.service.browse("images", "", false) }
                 }
                 Rectangle { Layout.fillWidth: true; height: 1; color: Theme.outline; opacity: 0.25 }
+                MessageBrowser { service: root.service; visible: !!root.service.browseMode; Layout.fillWidth: true; Layout.fillHeight: true }
                 ListView {
+                    visible: !root.service.browseMode
                     id: messageList
                     objectName: "messageList"
                     ChatWheel { view: messageList; onScrolled: messageList.followTail = messageList.atYEnd }
@@ -387,6 +364,20 @@ Item {
                         }
                         if (messageRows.count > incoming.length) messageRows.remove(incoming.length, messageRows.count - incoming.length);
                     }
+                    function reportViewport() {
+                        if (!visible || !root.Window.window?.visible || !root.service.surfaceOpen || typeof root.service.loadNextMedia !== "function") return;
+                        root.service.readingLatest = atYEnd && !root.service.historyContext;
+                        root.service.readVisibleChat();
+                        const ids = [];
+                        for (let i = 0; i < count; i++) {
+                            const row = itemAtIndex(i);
+                            if (row && row.y + row.height >= contentY && row.y <= contentY + height) ids.push(row.entry.id);
+                        }
+                        root.service.visibleMediaIds = ids;
+                        root.service.loadNextMedia();
+                    }
+                    Timer { id: viewportTimer; interval: 80; onTriggered: messageList.reportViewport() }
+                    onContentYChanged: viewportTimer.restart()
                     property string highlightedMessage: ""
                     Timer { id: highlightTimer; interval: 1800; onTriggered: messageList.highlightedMessage = "" }
                     property bool followTail: true
@@ -394,18 +385,23 @@ Item {
                     property string displayedChat: ""
                     function settleScroll() {
                         if (!followTail) return;
+                        forceLayout();
                         positionViewAtEnd();
+                        viewportTimer.restart();
                     }
                     function openAtLatest() {
+                        cancelFlick();
                         followTail = true;
                         highlightedMessage = "";
                         Qt.callLater(settleScroll);
+                        tailTimer.restart();
                     }
+                    Timer { id: tailTimer; interval: 50; onTriggered: messageList.settleScroll() }
                     Component.onCompleted: { syncMessages(); displayedChat = root.service.selectedChat?.key || ""; openAtLatest(); }
-                    onVisibleChanged: if (visible) openAtLatest()
-                    onContentHeightChanged: if (followTail) Qt.callLater(settleScroll)
-                    onHeightChanged: if (followTail) Qt.callLater(settleScroll)
-                    onMovementStarted: followTail = false
+                    onVisibleChanged: if (visible) { viewportTimer.restart(); if (followTail && !root.service.historyContext) openAtLatest(); }
+                    onContentHeightChanged: { viewportTimer.restart(); if (followTail) tailTimer.restart(); }
+                    onHeightChanged: if (followTail) tailTimer.restart()
+                    onDraggingChanged: if (dragging) followTail = false
                     onMovementEnded: followTail = atYEnd
                     Connections {
                         target: root.service
@@ -431,6 +427,7 @@ Item {
                             messageList.syncMessages();
                             messageList.displayedChat = key;
                             if (changedChat || root.service.messages.length === 0) messageList.openAtLatest();
+                            viewportTimer.restart();
                             Qt.callLater(() => {
                                 messageList.forceLayout();
                                 if (messageList.followTail) messageList.settleScroll();
@@ -456,6 +453,7 @@ Item {
                         readonly property var modelData: entry
                         width: messageList.width
                         height: bubble.height + 4
+                        onHeightChanged: if (messageList.followTail) tailTimer.restart()
                         Rectangle {
                             id: bubble
                             readonly property color readableText: Links.readable(color, Theme.surfaceText, Theme.primaryText)
@@ -519,6 +517,8 @@ Item {
                                     Controls.ContextMenu.menu: TextMenu {
                                         editor: messageText
                                         allowReply: true
+                                        allowEdit: messageRow.modelData.out && !!messageRow.modelData.text
+                                        onEditRequested: root.openEdit(messageRow.modelData)
                                         onReplyRequested: root.service.setReply(messageRow.modelData)
                                         onDeleteRequested: root.openDeleteMessage(messageRow.modelData)
                                     }
@@ -567,6 +567,7 @@ Item {
                                         }
                                     }
                                     Item { Layout.fillWidth: true }
+                                    Label { visible: !!messageRow.modelData.edited; text: I18n.trFor("dankChat", "Edited"); font.pixelSize: Theme.fontSizeSmall; color: bubble.readableSecondary }
                                     Label { text: messageRow.modelData.time || (messageRow.modelData.timestamp ? Qt.formatDateTime(new Date(messageRow.modelData.timestamp * 1000), "hh:mm") : ""); color: bubble.readableSecondary; font.pixelSize: Theme.fontSizeSmall }
                                     DankIcon {
                                         id: deliveryIcon
@@ -595,6 +596,12 @@ Item {
                         }
                     }
                 }
+                Label {
+                    Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText
+                    readonly property var states: Object.keys(root.service.transferStates || {}).filter(k => k.startsWith(root.service.selectedChat?.key + ":file:") || k === root.service.selectedChat?.key + ":send").map(k => root.service.transferStates[k])
+                    visible: states.length > 0
+                    text: states.map((state, i) => (i + 1) + ": " + I18n.trFor("dankChat", state)).join(" · ")
+                }
                 Rectangle {
                     objectName: "replyComposerPreview"
                     visible: !!root.service.reply
@@ -619,7 +626,7 @@ Item {
                     objectName: "voiceComposer"
                     visible: !!root.service.voiceState
                     Layout.fillWidth: true
-                    implicitHeight: voiceColumn.implicitHeight + 20
+                    implicitHeight: voiceHeading.implicitHeight + voiceActions.implicitHeight + 26 + (voicePreview.active ? 94 : 0)
                     radius: Theme.cornerRadius; color: Theme.surfaceContainerHigh; border.color: Theme.outline
                     ColumnLayout {
                         id: voiceColumn
@@ -627,16 +634,19 @@ Item {
                         spacing: 6
                         Label {
                             Layout.fillWidth: true; wrapMode: Text.Wrap
+                            id: voiceHeading
                             text: root.service.voiceState === "recording" ? I18n.trFor("dankChat", "Recording voice message…") + " " + Math.floor(root.service.voiceSeconds / 60) + ":" + String(root.service.voiceSeconds % 60).padStart(2, "0") + " / 5:00"
                                 : root.service.voiceState === "ready" ? I18n.trFor("dankChat", "Preview voice message") : I18n.trFor("dankChat", "Please wait…")
                         }
                         Loader {
+                            id: voicePreview
                             Layout.fillWidth: true; Layout.preferredHeight: active ? 88 : 0
                             active: !!root.service.voicePath && root.service.voiceState === "ready"
                             sourceComponent: MediaPlayerView { sourceUrl: "file://" + root.service.voicePath; service: root.service; audioOnly: true }
                         }
                         RowLayout {
                             Layout.fillWidth: true
+                            id: voiceActions
                             DankButton { text: I18n.trFor("dankChat", "Discard"); enabled: ["recording", "ready"].includes(root.service.voiceState); onClicked: root.service.discardVoice() }
                             Item { Layout.fillWidth: true }
                             DankButton { visible: root.service.voiceState === "recording"; text: I18n.trFor("dankChat", "Stop recording"); onClicked: root.service.stopVoice() }
@@ -652,7 +662,7 @@ Item {
                     border.color: composer.activeFocus ? Theme.primary : Theme.outline
                     RowLayout {
                         anchors.fill: parent; anchors.margins: 6; spacing: 4
-                        Action { iconName: "attach_file"; enabled: !root.service.demo && !root.service.writing; onClicked: { root.discardClipboardPaths(root.attachmentPaths); root.attachmentChatKey = root.service.selectedChat.key; root.attachmentPaths = []; root.savingMedia = false; fileDialog.open(); } }
+                        Action { iconName: "attach_file"; tooltipText: root.attachmentPaths.length ? I18n.trFor("dankChat", "Pending attachments") + " (" + root.attachmentPaths.length + ")" : I18n.trFor("dankChat", "Add files"); enabled: !root.service.demo && !root.service.writing; onClicked: { if (root.attachmentPaths.length) attachmentConfirm.open(); else { root.savingMedia = false; fileDialog.open(); } } }
                         Action {
                             iconName: "sentiment_satisfied"
                             tooltipText: I18n.trFor("dankChat", "Emoji")
@@ -698,7 +708,7 @@ Item {
         }
     }
     property bool pastingClipboard: false
-    property var attachmentPaths: []
+    readonly property var attachmentPaths: service.attachmentDrafts[attachmentChatKey] || []
     function discardClipboardPaths(paths) {
         if (!service.demo && service.selectedChat)
             service.sendRequest(service.selectedChat.provider, "discard_clipboard", {paths: paths}, () => {});
@@ -706,7 +716,7 @@ Item {
     function addAttachments(paths) {
         const combined = Array.from(new Set(attachmentPaths.concat(paths)));
         if (combined.length > 10) { discardClipboardPaths(paths.filter(path => !attachmentPaths.includes(path))); service.errorText = I18n.trFor("dankChat", "Choose up to 10 attachments."); return; }
-        attachmentPaths = combined;
+        service.setAttachmentPaths(combined, attachmentChatKey);
         attachmentConfirm.open();
     }
     function attachmentIsImage(path) { return /\.(png|jpe?g|webp|gif|bmp)$/i.test(path); }
@@ -716,15 +726,13 @@ Item {
         if (pastingClipboard || service.writing || !service.selectedChat) return;
         const chatKey = service.selectedChat.key;
         const provider = service.selectedChat.provider;
-        pastingClipboard = true;
+        pastingClipboard = true; service.errorText = "";
         if (!service.sendRequest(provider, "clipboard_image", {}, result => {
             pastingClipboard = false;
             if (service.selectedChat?.key !== chatKey) { if (result.paths) service.sendRequest(provider, "discard_clipboard", {paths: result.paths}, () => {}); return; }
             if (result.error) service.errorText = I18n.trFor("dankChat", result.error);
             if (result.textFallback) { composer.paste(); return; }
             if (!result.ok || !result.paths?.length) return;
-            if (attachmentChatKey !== chatKey) { discardClipboardPaths(attachmentPaths); attachmentPaths = []; }
-            attachmentChatKey = chatKey;
             addAttachments(result.paths);
         })) pastingClipboard = false;
     }
@@ -860,6 +868,28 @@ Item {
             }
         }
     }
+    property var editTarget: null
+    property var editChat: null
+    function openEdit(message) { editTarget = message; editChat = service.selectedChat; editText.text = message.text; editDialog.open(); }
+    Controls.Popup {
+        id: editDialog
+        anchors.centerIn: parent; width: Math.min(root.width - 24, 560); modal: true; focus: true
+        popupType: Controls.Popup.Item
+        background: Rectangle { color: Theme.surfaceContainer; radius: Theme.cornerRadius; border.color: Theme.outline }
+        contentItem: ColumnLayout {
+            Label { text: I18n.trFor("dankChat", "Edit message"); Layout.fillWidth: true }
+            DankTextField { id: editText; Layout.fillWidth: true; maximumLength: 4096 }
+            DankButton { text: I18n.trFor("dankChat", "Save"); enabled: !!editText.text.trim() && !root.service.writing; onClicked: { root.service.editMessage(root.editTarget, editText.text, root.editChat); editDialog.close(); } }
+            DankButton { text: I18n.trFor("dankChat", "Cancel"); onClicked: editDialog.close() }
+        }
+    }
+    Shortcut { sequence: "Ctrl+K"; enabled: !!root.Window.window?.active; onActivated: { root.service.settingsOpen = false; root.service.accountsOpen = false; if (root.narrow) root.service.selectedChat = null; chatSearch.forceActiveFocus(); } }
+    Shortcut { sequence: "Ctrl+F"; enabled: !!root.Window.window?.active && !!root.service.selectedChat; onActivated: root.service.browse("search", "", false) }
+    Shortcut { sequence: "Ctrl+R"; enabled: !!root.Window.window?.active && root.service.messages.length > 0; onActivated: { root.service.setReply(root.service.messages[root.service.messages.length - 1]); composer.forceActiveFocus(); } }
+    function adjacentChat(delta) { const chats = service.visibleChats; const index = chats.findIndex(c => c.key === service.selectedChat?.key); if (chats.length) service.selectChat(chats[(index + delta + chats.length) % chats.length]); }
+    Shortcut { sequence: "Alt+Up"; enabled: !!root.Window.window?.active; onActivated: root.adjacentChat(-1) }
+    Shortcut { sequence: "Alt+Down"; enabled: !!root.Window.window?.active; onActivated: root.adjacentChat(1) }
+    property bool savingDiagnostics: false
     property bool savingMedia: false
     property var exportMessage: null
     property var exportChat: null
@@ -876,10 +906,10 @@ Item {
         contentItem: Loader {
             active: fileDialog.visible
             sourceComponent: FileBrowserContent {
-                browserTitle: root.savingMedia ? I18n.trFor("dankChat", "Save media as…") : I18n.trFor("dankChat", "Choose an attachment to send")
+                browserTitle: root.savingDiagnostics ? I18n.trFor("dankChat", "Save diagnostic report…") : root.savingMedia ? I18n.trFor("dankChat", "Save media as…") : I18n.trFor("dankChat", "Choose an attachment to send")
                 browserType: root.savingMedia ? "dankchat_export" : "dankchat_attachment"
                 saveMode: root.savingMedia
-                defaultFileName: root.savingMedia ? (root.exportMessage?.filename || root.exportMessage?.mediaPath?.split("/").pop() || "media") : ""
+                defaultFileName: root.savingDiagnostics ? "dankchat-diagnostics.json" : root.savingMedia ? (root.exportMessage?.filename || root.exportMessage?.mediaPath?.split("/").pop() || "media") : ""
                 fileExtensions: ["*"]
                 showSidebar: width >= 620
                 Component.onCompleted: { initialize(); forceActiveFocus(); }
@@ -887,10 +917,11 @@ Item {
                     const value = path.toString();
                     const selectedPath = value.startsWith("file://") ? decodeURIComponent(value.slice(7)) : value;
                     fileDialog.close();
-                    if (root.savingMedia) root.service.saveMedia(root.exportChat, root.exportMessage, selectedPath);
+                    if (root.savingDiagnostics) { root.savingDiagnostics = false; root.service.exportDiagnostics(selectedPath); }
+                    else if (root.savingMedia) root.service.saveMedia(root.exportChat, root.exportMessage, selectedPath);
                     else { root.addAttachments([selectedPath]); }
                 }
-                onCloseRequested: { fileDialog.close(); if (!root.savingMedia && root.attachmentPaths.length) attachmentConfirm.open(); }
+                onCloseRequested: { root.savingDiagnostics = false; fileDialog.close(); if (!root.savingMedia && root.attachmentPaths.length) attachmentConfirm.open(); }
             }
         }
     }
@@ -957,7 +988,7 @@ Item {
     readonly property alias deleteMessageDialog: deleteConfirm
     property var deleteTarget: null
     property var deleteChat: null
-    Connections { target: root.service; function onSelectedChatChanged() { deleteConfirm.reject(); } }
+    Connections { target: root.service; function onSelectedChatChanged() { deleteConfirm.reject(); attachmentConfirm.close(); fileDialog.close(); } }
     function openDeleteMessage(message) {
         if (!service.selectedChat || service.demo || service.writing) return;
         deleteTarget = message; deleteChat = service.selectedChat;
@@ -1014,7 +1045,7 @@ Item {
         }
         onAccepted: root.service.accountAction(root.disconnectProvider, "logout")
     }
-    property string attachmentChatKey: ""
+    readonly property string attachmentChatKey: service.selectedChat?.key || ""
     Controls.Dialog {
         id: attachmentConfirm
         anchors.centerIn: parent
@@ -1051,21 +1082,25 @@ Item {
                                 asynchronous: true; sourceSize.width: 240
                             }
                             Label { Layout.fillWidth: true; Layout.minimumWidth: 0; text: modelData.split("/").pop(); wrapMode: Text.WrapAnywhere }
-                            Action { iconName: "close"; onClicked: { root.discardClipboardPaths([modelData]); root.attachmentPaths = root.attachmentPaths.filter((_, i) => i !== index); } }
+                            Action { iconName: "close"; enabled: !root.service.writing; onClicked: { root.discardClipboardPaths([modelData]); root.service.setAttachmentPaths(root.attachmentPaths.filter((_, i) => i !== index), root.attachmentChatKey); } }
                         }
                     }
                 }
             }
             RowLayout {
                 Layout.fillWidth: true
-                DankButton { text: I18n.trFor("dankChat", "Add files"); onClicked: { attachmentConfirm.close(); root.savingMedia = false; fileDialog.open(); } }
+                DankButton { text: I18n.trFor("dankChat", "Add files"); enabled: !root.service.writing; onClicked: { attachmentConfirm.close(); root.savingMedia = false; fileDialog.open(); } }
                 DankButton { text: I18n.trFor("dankChat", "Paste"); enabled: !root.pastingClipboard; onClicked: root.pasteClipboard() }
             }
         }
         onAccepted: {
-            const paths = root.attachmentPaths.slice();
-            root.service.sendAttachments(paths, root.attachmentChatKey, sent => { root.discardClipboardPaths(paths.slice(0, sent)); root.attachmentPaths = paths.slice(sent); });
+            const paths = root.attachmentPaths.slice(), key = root.attachmentChatKey;
+            root.service.sendAttachments(paths, key, sent => {
+                root.discardClipboardPaths(paths.slice(0, sent));
+                root.service.setAttachmentPaths(paths.slice(sent), key);
+                if (sent < paths.length && root.service.surfaceOpen && root.service.selectedChat?.key === key) attachmentConfirm.open();
+            });
         }
-        onRejected: { root.discardClipboardPaths(root.attachmentPaths); root.attachmentPaths = []; }
+        onRejected: { if (root.service.writing) return; root.discardClipboardPaths(root.attachmentPaths); root.service.setAttachmentPaths([], root.attachmentChatKey); }
     }
 }

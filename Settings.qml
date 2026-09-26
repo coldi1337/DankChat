@@ -13,6 +13,9 @@ PluginSettings {
         description: I18n.trFor("dankChat", "Mark Telegram messages as read when opening a chat.")
         defaultValue: false
     }
+    ToggleSetting { settingKey: "whatsappReadState"; label: I18n.trFor("dankChat", "WhatsApp read synchronization"); description: I18n.trFor("dankChat", "Mark WhatsApp chats as read on all your devices when reading them here."); defaultValue: false }
+    ToggleSetting { settingKey: "automaticMedia"; label: I18n.trFor("dankChat", "Load media automatically"); defaultValue: true }
+    ToggleSetting { settingKey: "automaticUpdates"; label: I18n.trFor("dankChat", "Check GitHub for updates daily"); defaultValue: true }
     ToggleSetting {
         settingKey: "demoMode"
         label: I18n.trFor("dankChat", "Demo mode")

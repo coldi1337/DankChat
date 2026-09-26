@@ -21,6 +21,7 @@ import stat
 import subprocess
 import sys
 import time
+import tempfile
 from typing import Any, Iterator, Sequence
 from urllib.parse import parse_qsl, quote, unquote, urlparse
 
@@ -2346,7 +2347,7 @@ class Backend:
         return {"ok": True, "kind": "sync-mode", "account": account.name,
                 "online": bool(online)}
 
-    def messages(self, jid: str, query: str = "", limit: int = 160, around_id: str = "") -> dict[str, Any]:
+    def messages(self, jid: str, query: str = "", limit: int = 160, around_id: str = "", category: str = "", offset: int = 0) -> dict[str, Any]:
         chat = self._chat(jid)
         sent_media_hints = self._sent_media_hints()
         sent_reply_hints = self._sent_reply_hints()
@@ -2362,6 +2363,13 @@ class Backend:
             where += """ AND LOWER(COALESCE(NULLIF(base.text, ''), NULLIF(base.media_caption, ''),
               NULLIF(base.display_text, ''), NULLIF(base.filename, ''), '')) LIKE LOWER(?) ESCAPE '\\'"""
             parameters.append(self._like(cleaned))
+        categories = {"images": ("image", "photo", "sticker"), "videos": ("video", "gif"), "files": ("document",), "audio": ("audio", "voice", "ptt")}
+        if category in categories:
+            kinds = categories[category]
+            where += " AND base.media_type IN (" + ",".join("?" for _ in kinds) + ")"
+            parameters.extend(kinds)
+        elif category == "links":
+            where += " AND (LOWER(base.text) LIKE '%https://%' OR LOWER(base.text) LIKE '%http://%')"
         parameters.append(limit)
         try:
             with closing(self._connect()) as connection:
@@ -2390,8 +2398,8 @@ class Backend:
                       ON location.chat_jid = base.chat_jid
                         AND location.msg_id = base.msg_id
                     WHERE {where}
-                    ORDER BY {order_by} LIMIT ?""",
-                    parameters,
+                    ORDER BY {order_by} LIMIT ? OFFSET ?""",
+                    parameters + [max(0, min(int(offset), 1000000))],
                 ).fetchall()
                 if around_id:
                     rows = sorted(rows, key=lambda row: row["ts"], reverse=True)
@@ -2607,7 +2615,7 @@ class Backend:
             raise WhatsAppError("That message is not available in this chat.")
         return chat, row
 
-    def download_media(self, jid: str, message_id: str) -> dict[str, Any]:
+    def download_media(self, jid: str, message_id: str, *, read_only: bool = False) -> dict[str, Any]:
         chat = self._chat(jid)
         target = message_id.strip()
         if not target or len(target) > 256:
@@ -2630,6 +2638,22 @@ class Backend:
             return {"ok": True, "kind": "media", "local_path": local_path}
         if row["media_unavailable_at"] is not None:
             raise WhatsAppError("That older attachment is no longer available from WhatsApp.")
+        if read_only:
+            # A download does not need the writable store lock held by sync.
+            cache = self.state_dir / "media-downloads"
+            cache.mkdir(parents=True, exist_ok=True, mode=0o700)
+            cache_key = hashlib.sha256((self.active.key + "|" + chat["jid"] + "|" + target).encode()).hexdigest()
+            path = cache / cache_key
+            if not path.is_file():
+                with tempfile.TemporaryDirectory(prefix=".download-", dir=cache) as staging:
+                    temporary = Path(staging) / "media"
+                    result = self._run(["--json", "--read-only", "media", "download", "--chat", chat["jid"], "--id", target, "--output", str(temporary)], timeout=180)
+                    self._envelope(result)
+                    if not temporary.is_file() or temporary.stat().st_size == 0:
+                        raise WhatsAppError("The media download returned no file.")
+                    temporary.chmod(0o600); temporary.replace(path)
+            self._remember_sent_media_best_effort(chat["jid"], target, path, "", str(row["media_type"]))
+            return {"ok": True, "kind": "media", "local_path": str(path)}
         result = self._write(
             ["--json", "media", "download", "--chat", chat["jid"], "--id", target],
             timeout=180,

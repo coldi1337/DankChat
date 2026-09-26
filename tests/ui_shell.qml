@@ -11,10 +11,14 @@ import "Common/StockThemes.js" as StockThemes
 ShellRoot {
     id: root
     function findItem(item, name) {
-        if (item.objectName === name) return item;
-        for (let child of item.children || []) {
-            const found = findItem(child, name);
-            if (found) return found;
+        // Avoid recursive QML-list iterators surviving nested engine GC passes.
+        const pending = [item];
+        while (pending.length) {
+            const current = pending.pop();
+            if (!current) continue;
+            if (current.objectName === name) return current;
+            const children = current.children;
+            if (children) for (let i = children.length - 1; i >= 0; --i) pending.push(children[i]);
         }
         return null;
     }
@@ -32,8 +36,55 @@ ShellRoot {
         property bool demo: true
         property bool telegramEnabled: true
         property bool whatsappEnabled: true
+        property bool settingsOpen: false
+        property var appInfo: ({version: "0.5.0", development: true, revision: "test"})
+        property var updateInfo: ({})
+        property bool checkingUpdates: false
+        property bool automaticMedia: true
+        property bool automaticUpdates: false
+        property bool readReceipts: false
+        property bool whatsappReadState: false
+        property var accounts: [{provider: "telegram", id: "", label: "Private"}, {provider: "whatsapp", id: "", label: "Work"}]
+        property var accountStatuses: ({})
+        property string accountFilter: "all"
+        property string browseMode: ""
+        property string messageQuery: ""
+        property var browseResults: []
+        property string browseNext: ""
+        property bool browsing: false
+        property var storageInfo: ({bytes: 10485760})
+        property bool storageBusy: false
+        property int mediaLimitMb: 25
+        property int cacheLimitMb: 512
+        property int cacheDays: 30
+        property var mediaTypes: ["images", "videos", "audio"]
+        property string notificationMode: "off"
+        property bool notificationPreview: false
+        property bool notificationSound: false
+        property bool suppressActive: true
+        property var transferStates: ({})
+        function accountKey(provider, account) { return provider + (account ? ":" + account : ""); }
+        function accountLabel(chat) { return chat?.provider || ""; }
+        function accountConnectionText(provider, account) { return I18n.trFor("dankChat", "Connected"); }
+        function notificationPolicy(chat) { return "off"; }
+        function cycleChatNotifications(chat) {}
+        function preference(provider, account, key, fallback) { return fallback; }
+        function savePreference(key, value) {}
+        function saveAccountPreference(provider, account, key, value) {}
+        function changeAccount(provider, account, label, add) {}
+        function storageAction(clean, clear) {}
+        function checkUpdates(force) {}
+        function closeBrowse() { browseMode = ""; }
+        function browse(mode, query, more) { browseMode = mode; }
+        function editMessage(message, text, chat) {}
         property bool accountsOpen: false
+        property var attachmentDrafts: ({})
+        function setAttachmentPaths(paths, key) { attachmentDrafts = Object.assign({}, attachmentDrafts, {[key]: paths}); }
         property bool writing: false
+        property bool reconnecting: false
+        property var syncFailures: ({})
+        function retryConnection() {}
+        function connectionText(provider) { return I18n.trFor("dankChat", "Connected"); }
         property bool surfaceOpen: true
         property bool historyContext: false
         property string presenceText: ""
@@ -116,10 +167,10 @@ ShellRoot {
             if (!pinError.startsWith(root.english ? "Telegram pin limit" : "Telegram-Pin-Limit")) return "FAIL pin-limit translation";
             mock.errorText = root.step >= 24 && root.step <= 27 ? pinError : "";
             mock.statuses = root.step % 2 ? {telegram: {authorized: true}, whatsapp: {authorized: true}} : {};
-            mock.accountsOpen = root.step >= 60 ? false : root.step % 7 < 2;
+            if (root.step < 121) mock.accountsOpen = root.step >= 60 ? false : root.step % 7 < 2;
             root.testWidth = root.step >= 60 ? 480 : [360, 480, 760, 1080][root.step % 4];
             if (root.step >= 60 && root.step <= 68) { mock.accountsOpen = false; root.testWidth = 480; Theme.fontScale = 1; }
-            if (root.step >= 70) { mock.accountsOpen = false; root.testWidth = 480; Theme.fontScale = 1; }
+            if (root.step >= 70 && root.step < 121) { mock.accountsOpen = false; root.testWidth = 480; Theme.fontScale = 1; }
             if (root.step >= 41 && root.step <= 43) mock.accountsOpen = false;
             if (root.step === 15) mock.presenceText = I18n.trFor("dankChat", "Typing…");
             if (root.step === 16) {
@@ -157,7 +208,6 @@ ShellRoot {
                 view.item.addAttachments([Quickshell.env("DANKCHAT_TEST_VIDEO"), "/tmp/synthetic-document.pdf"]);
                 view.item.addAttachments([Quickshell.env("DANKCHAT_TEST_VIDEO")]);
                 if (view.item.attachmentPaths.length !== 2) return "FAIL multiple attachments or deduplication";
-                view.item.attachmentChatKey = mock.selectedChat.key;
                 mock.demo = false;
                 view.item.pasteClipboard();
                 if (mock.clipboardRequests !== 1 || view.item.attachmentPaths.length !== 3) return "FAIL clipboard image staging";
@@ -327,7 +377,43 @@ ShellRoot {
                 mock.selectedChat = {key: "different", provider: "telegram"};
                 if (dialog.visible || mock.deletionCalls.length !== 3) return "FAIL stale delete dialog";
             }
-            return root.step === 110 ? "PASS accounts, resize, picker open/close" : "STEP " + root.step;
+            if (root.step === 110) {
+                mock.selectedChat = {key: "scroll-performance", provider: "telegram", name: "Scroll test"};
+                mock.messages = Array.from({length: 60}, (_, i) => ({id: "scroll-" + i, text: "Synthetic message " + i, out: false, time: "12:00", mediaType: i === 59 ? "image" : "", mediaPath: "", reactions: []}));
+            }
+            if (root.step === 112 && !messagesView.atYEnd) return "FAIL switched chat did not open at latest";
+            if (root.step === 113) {
+                mock.messagesReplacing();
+                mock.messages = mock.messages.map(row => row.id === "scroll-59" ? Object.assign({}, row, {mediaPath: Quickshell.env("DANKCHAT_TEST_IMAGE")}) : row);
+            }
+            if (root.step === 116 && !messagesView.atYEnd) return "FAIL delayed image moved chat off latest";
+            if (root.step === 117) { messagesView.followTail = false; messagesView.positionViewAtBeginning(); }
+            if (root.step === 118) { mock.messagesReplacing(); mock.messages = mock.messages.map(row => Object.assign({}, row, {deliveryStatus: "read"})); }
+            if (root.step === 120 && !messagesView.atYBeginning) return "FAIL background update stole reading position";
+            if (root.step === 121) { mock.settingsOpen = true; root.testWidth = 380; Theme.fontScale = 1.2; }
+            if (root.step === 124) {
+                if (I18n.trFor("dankChat", "Settings") !== (root.english ? "Settings" : "Einstellungen")) return "FAIL settings translation";
+                const version = root.findItem(view.item, "installedVersion");
+                if (!version || version.text !== "DankChat v0.5.0") return "FAIL installed version";
+                view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/settings.png"));
+            }
+            if (root.step === 125) { mock.settingsOpen = false; mock.accountsOpen = true; mock.accounts = [{provider: "telegram", id: "a", label: "Privat und Familie"}, {provider:"whatsapp", id:"b", label:"Arbeit und Projekte"}, {provider:"telegram", id:"c", label:"Zweites Telegram-Konto"}]; }
+            if (root.step === 128) view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/accounts.png"));
+            if (root.step === 129) { mock.accountsOpen = false; mock.browseMode = "search"; mock.browseResults = [{id:"result",text:"Synthetic search result",timestamp:1}]; }
+            if (root.step === 132) {
+                if (!root.findItem(view.item, "messageSearch")) return "FAIL search view";
+                view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/search.png"));
+            }
+            if (root.step === 133) { mock.browseMode = ""; mock.selectedChat = null; }
+            if (root.step === 135) {
+                const selectors = root.findItem(view.item, "accountSelectors");
+                const buttons = [];
+                for (let i = 0; i < selectors.children.length; ++i) if (selectors.children[i].objectName === "accountFilterButton") buttons.push(selectors.children[i]);
+                if (buttons.length !== 4 || buttons.some(b => Math.abs(b.width - selectors.width) > 1)) return "FAIL account buttons do not fill sidebar";
+                if (Math.abs(root.findItem(view.item, "unreadFilter").width - selectors.width) > 1) return "FAIL unread button does not fill sidebar";
+                view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/account-buttons.png"));
+            }
+            return root.step === 137 ? "PASS accounts, settings, search, resize, picker open/close" : "STEP " + root.step;
 
         }
     }

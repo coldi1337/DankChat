@@ -7,6 +7,8 @@ import secrets
 import signal
 import subprocess
 import threading
+import sys
+from accounts import validate_id
 from receipts import record
 
 
@@ -14,6 +16,9 @@ def main():
     os.umask(0o077)
     configured = Path(os.environ.get('XDG_STATE_HOME', str(Path.home() / '.local/state')))
     state = (configured if configured.is_absolute() else Path.home() / '.local/state') / 'dankchat/whatsapp'
+    account = validate_id(sys.argv[1] if len(sys.argv) > 1 else '')
+    if account:
+        state = state / account
     store = state / 'store'
     if not (store / 'session.db').is_file():
         return 0

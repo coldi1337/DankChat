@@ -22,13 +22,19 @@ def chat(provider, raw):
     account = "" if telegram else str(raw.get("account", ""))
     ident = str(raw["id"] if telegram else raw["jid"])
     last = raw.get("last_message", {}) if telegram else {}
-    unread = raw.get("unread_count", 0) if telegram else raw.get("notification_unread", raw.get("unread", 0))
+    unread = max(0, int((raw.get("unread_count", 0) if telegram else raw.get("unread", 0)) or 0))
+    notification_unread = max(0, int(raw.get("notification_unread", unread) or 0))
+    # Preserve local dismissals while allowing remote reads to clear the badge.
+    if not telegram:
+        unread = min(unread, notification_unread)
     return {
         "key": key(provider, account, ident), "provider": provider,
         "account": account, "id": ident,
         "name": str(raw.get("title" if telegram else "name", ident)),
         "preview": str(last.get("text", "") if telegram else raw.get("preview", "")),
         "timestamp": timestamp(last.get("timestamp", last.get("date", "")) if telegram else raw.get("timestamp", 0)),
+        "notificationUnread": notification_unread,
+        "serverUnread": max(0, int((raw.get("unread_count", 0) if telegram else raw.get("unread", 0)) or 0)),
         "unread": max(0, int(unread or 0)), "avatar": raw.get("avatar", ""),
         "forum": bool(raw.get("is_forum", False)),
         "deleteForMe": bool(raw.get("delete_for_me", not raw.get("is_group", False))) if telegram else True,
@@ -69,6 +75,7 @@ def message(provider, raw):
         "timestamp": timestamp(raw.get("timestamp", raw.get("date", 0))),
         "time": str(raw.get("time", "")),
         "mediaType": str(raw.get("media_type", "")),
+        "mediaSize": max(0, int(raw.get("file_size", 0) or 0)),
         "mediaDownloadable": bool(raw.get("media_downloadable", True)),
         "mediaUnavailable": bool(raw.get("media_unavailable", False)),
         "mediaPath": str(raw.get("media_path" if telegram else "local_path", "")),

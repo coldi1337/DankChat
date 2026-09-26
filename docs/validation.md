@@ -269,3 +269,153 @@ Single-message deletion is exposed through the text context menu and a delete ic
 ## v0.4.0 acceptance — 2026-09-14
 
 The maintainer reports that the current features appear to work in their setup and has approved committing, pushing and releasing this version. This is user-reported hands-on acceptance; automated tests continue to use synthetic messages and microphone input. The release includes voice recording/playback controls, incoming activity, message deletion, the missing WhatsApp media metadata fix, translations and the shorter documentation.
+
+
+## Clipboard and synchronization — 2026-09-20
+
+Synthetic regression tests cover image-data fallback when a clipboard URI is
+unusable, image decoding/conversion, concurrent clipboard/presence/chat requests
+during a blocked download, and logout waiting for transfers. Telegram subscribes
+to incoming and outgoing read events; WhatsApp unread counts use the service's
+unread state together with local notification acknowledgements.
+
+All 66 project tests and 152 retained WhatsApp tests pass (one intentional skip),
+as do QtTest, QML parsing and manifest validation. The 246-step isolated service
+fixture checks external read updates, temporary-error retention, attachment drafts
+across chat switches, bridge restart and text-draft retention. UI fixtures cover
+clipboard staging and the voice-preview layout. No real messages were sent or
+marked read by the tests. Real clipboard sources and cross-device timing still
+need hands-on verification.
+
+Both German and English isolated UI runs pass. During live plugin reload,
+Quickshell crashed in Qt QML (`QV4::Value::sameValueZero`). Starting `dms.service`
+restored the bar; DankChat then reported both accounts authorized, the bridge
+running and no pending requests, and WhatsApp sync was active. This reload crash
+is unresolved; the passing isolated reload fixture does not establish that live
+hot reload is safe.
+
+
+## Unread-badge regression — 2026-09-20
+
+The raw WhatsApp unread count bypassed the existing local acknowledgment made
+on chat opening. Restored the local badge behavior, capped by the remote unread
+count so a remote read clears it even if a notification snapshot is stale.
+Regression tests cover opening/dismissal, a subsequent new message, remote read,
+and helpers without notification metadata. Successful acknowledgments request
+a chat-list refresh. This does not enable automatic WhatsApp read receipts.
+
+## Performance and compatibility — 2026-09-26
+
+The UI retains up to 12 recent chat message lists, revalidates without blanking
+cached content, and isolates responses by chat/request. Confirmed attachment
+results are shown per file, with bounded private preview copies; stale history
+responses do not immediately remove a confirmed send. Visible media is scheduled
+first with two Telegram download slots and one WhatsApp slot. Sends, chat-list
+refreshes, presence and message reads have separate bounded lanes. WhatsApp's
+underlying store can still serialize network operations. Its open chat is checked
+every 1.5 seconds. Unchanged chat lists no longer replace the QML model.
+
+Telegram's duplicate eager media/avatar fetches are disabled in the DankChat
+adapter (cached avatars remain available). Message formatting reuses entities
+from dialogs/message responses. Explicit downloads use private staging and an
+atomic rename; cancellation leaves no partially published image. Preview decode
+size is capped at 960 pixels per axis, while opening the gallery uses the original.
+
+Chat switches cancel the previous flick and settle at the latest message again
+after layout and late media-size changes. Intentional scrolling up is preserved.
+The 121-step UI fixture exercises a late image and background receipt update.
+The 262-step service fixture additionally checks instant cached navigation,
+out-of-order chat responses, confirmed-send reconciliation and preserved receipts.
+
+GitHub issue #2: replaced the exact wacli 0.17.1 check with a version floor plus
+required-command/flag probes. Both the installed 0.17.1 and official 0.19.0 binary
+passed; the actual 0.19.0 SQLite schema passed the chat adapter smoke test using a
+disposable store. The release archive SHA256 matched its published checksums.
+
+GitHub issue #1: the reported DMS Git commit 80060ee925ffcea6f5e759cbf79393a2f6e05f2d
+no longer exports DankPopoutStandalone. DankChat now uses the public DankPopout
+wrapper. The service fixture passed against both local DMS 1.6.2 and that exact
+source commit with its pinned dank-qml-common submodule
+928cc746e57e4e2a06a5ee40fe137e425fcd8cfe. No ChaoticAUR package was installed.
+This verifies those QML sources on the installed Qt/Quickshell runtime, not every
+aspect of the reporter's package or machine.
+
+76 project tests and 152 WhatsApp tests pass (one intentional skip), plus QtTest,
+QML parsing and manifest validation. German/English UI and service fixtures pass.
+Tests used synthetic messages; no real sends or read mutations were performed.
+
+After stopping DMS/sync, the local WhatsApp store and old executable were backed
+up privately under $XDG_STATE_HOME/dankchat/backups/before-wacli-0.19.0-2xnbaw51.
+wacli 0.19.0 was installed, then DMS was started normally. Both providers report
+authorized, the bridge and sync service are running, and live viewStatus reports
+no QML/media component errors. The previous live-hot-reload crash remains unproven
+resolved; a normal restart was used. User acceptance of real transfers/scrolling
+is still pending. No commit, push, release or issue comment was made in this pass.
+
+## 2026-09-26 — accounts, settings, search and read synchronization
+
+The local development build now has independently named Telegram/WhatsApp accounts,
+account tabs, app settings, message search/media browsing, editing, notification
+policies, cache management, update checks, diagnostics export and keyboard shortcuts.
+Search/gallery actions are icons in the chat header. Persistent drafts were explicitly
+excluded. All new application-owned UI/error strings have German translations with
+English source fallback.
+
+89 project tests pass. 152 vendor WhatsApp tests pass with one intentional skip;
+QtTest, QML parsing and manifest validation pass. German and English UI fixtures
+cover the new settings/account/search views at narrow widths and enlarged font sizes.
+The 290-step service fixture passes on current DMS 1.6.2 and the issue #1 Git source
+80060ee with its pinned DankCommon module. The harness explicitly checks that the
+actual chat view loaded. No alternative DMS package was installed.
+
+New coverage includes identical chat IDs under different accounts, independent
+transfer lanes, safe account identities/legacy paths, tab rename/filtering, search
+pagination and result navigation, edit ownership, protected cache cleanup, completed
+read-only download caching, actionable CDN rejection errors, GitHub release caching,
+notification markup escaping and bounded Telegram read acknowledgements. Fixture
+messages and account databases are synthetic; tests never send to real contacts.
+
+Live activation used a regular DMS restart. The additional-account systemd template
+was installed, both existing accounts remained authorized, DMS and WhatsApp sync
+were active, and viewStatus reported a loaded UI with no component errors. The log
+check found no DankChat QML reference/type/binding errors since restart. Both services'
+read-sync preferences were enabled at the user's explicit request. GitHub's latest
+release remains v0.4.0; the installed source is correctly identified as locally modified.
+
+Actual linking of a second account, real message editing/uploads and phone-side
+read synchronization still need user acceptance. WhatsApp mentions-only notifications
+are unavailable because wacli lacks reliable mention metadata; the UI documents that
+policy as silent for WhatsApp. No commit, push, release or registry submission was made.
+
+
+Account selectors were subsequently changed at the user's request from a
+horizontal scrolling strip to vertically stacked full-width buttons. Long account
+labels are elided while retaining the service suffix and full-name tooltip.
+German/English isolated UI fixtures pass with the added sidebar screenshot
+(137 steps). The local layout was activated with a second normal DMS restart.
+
+
+## 2026-09-26 — 0.5.0 release validation
+
+93 project tests pass, including installer checksum rejection, archive symlink
+rejection, atomic replacement and previous-binary preservation. 152 vendor tests
+pass with one intentional skip; Qt link/emoji tests, QML parsing and manifest
+validation pass. The official wacli 0.19.0 command surface and disposable database
+adapter pass. Static application UI strings have German translations.
+
+A fresh isolated installation downloaded the official wacli release, checked its
+SHA-256, created a real Python environment and installed all Python dependencies.
+A second setup run kept the compatible executable and succeeded again. Plugin
+symlink, launcher, default sync unit and account template were verified. Only DMS
+scan and systemd reload were stubbed; no live account files were used.
+
+One German UI run crashed inside Qt's QML garbage collection during the fixture's
+recursive child-list traversal. The fixture now searches iteratively using indexed
+child access. Subsequent UI runs pass, including explicit full-width account/unread
+button checks. This does not establish that every possible Quickshell runtime crash
+is resolved. The real live bar was unaffected by the isolated test failure.
+
+The README preview is rendered from the current QML with English synthetic chats,
+named accounts and the default purple theme. No private conversations are included.
+The previous live-interaction limits (new real account linking, phone-side reads and
+real transfers) still apply; automated tests use synthetic providers.

@@ -39,9 +39,10 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(row["preview"], "$(touch nope)")
         self.assertGreater(row["timestamp"], 0)
 
-    def test_whatsapp_badge_uses_notification_unread(self):
+    def test_whatsapp_unread_respects_local_notification_acknowledgements(self):
         row = chat("whatsapp", {"jid": "synthetic", "account": "one", "unread": 9, "notification_unread": 0})
         self.assertEqual(row["unread"], 0)
+        self.assertEqual(row["notificationUnread"], 0)
 
     def test_whatsapp_missing_media_remains_visible_but_is_not_downloadable(self):
         row = message("whatsapp", {"id": "missing", "media_type": "image", "media_downloadable": False, "media_unavailable": False})

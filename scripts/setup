@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""Set up DankChat without root access or changes to linked accounts."""
+import argparse
+import asyncio
+import hashlib
+import io
+import os
+from pathlib import Path
+import platform
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import urllib.request
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'backend'))
+from wacli_compat import check
+
+WACLI_VERSION = '0.19.0'
+RELEASE = f'https://github.com/openclaw/wacli/releases/download/v{WACLI_VERSION}'
+
+
+def download(url, limit):
+    request = urllib.request.Request(url, headers={'User-Agent': 'DankChat-setup/0.5.0'})
+    with urllib.request.urlopen(request, timeout=90) as response:
+        data = response.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError('Release download exceeds the expected size.')
+    return data
+
+
+def verified_binary(archive, checksums, filename):
+    expected = [line.split()[0].lower() for line in checksums.splitlines()
+                if len(line.split()) == 2 and line.split()[1].lstrip('*') == filename]
+    if len(expected) != 1 or hashlib.sha256(archive).hexdigest() != expected[0]:
+        raise ValueError('wacli checksum verification failed; nothing was installed.')
+    with tarfile.open(fileobj=io.BytesIO(archive), mode='r:gz') as bundle:
+        members = [m for m in bundle.getmembers() if Path(m.name).name == 'wacli']
+        if len(members) != 1 or not members[0].isfile() or members[0].size > 200 * 1024 * 1024:
+            raise ValueError('Unexpected wacli archive contents.')
+        return bundle.extractfile(members[0]).read()
+
+
+def install_wacli(destination):
+    arch = {'x86_64': 'amd64', 'aarch64': 'arm64', 'arm64': 'arm64'}.get(platform.machine())
+    if platform.system() != 'Linux' or arch is None:
+        raise ValueError('Automatic wacli setup supports Linux x86_64 and ARM64. Install wacli manually on this platform.')
+    filename = f'wacli_{WACLI_VERSION}_linux_{arch}.tar.gz'
+    print(f'Downloading wacli {WACLI_VERSION} and verifying its release checksum…', flush=True)
+    archive = download(f'{RELEASE}/{filename}', 100 * 1024 * 1024)
+    checksums = download(f'{RELEASE}/checksums.txt', 1024 * 1024).decode('utf-8')
+    binary = verified_binary(archive, checksums, filename)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    # Stage on the same filesystem so the replacement is atomic.
+    with tempfile.TemporaryDirectory(prefix='.dankchat-wacli-', dir=destination.parent) as directory:
+        staged = Path(directory) / 'wacli'
+        staged.write_bytes(binary)
+        staged.chmod(0o755)
+        asyncio.run(check(staged))
+        if destination.is_symlink():
+            raise ValueError('The existing wacli is a symlink. Update it through its original installer.')
+        if destination.exists():
+            backup = Path(tempfile.mkdtemp(prefix='dankchat-wacli-backup-', dir=destination.parent)) / 'wacli'
+            shutil.copy2(destination, backup)
+            print(f'Previous wacli saved to {backup}')
+        os.replace(staged, destination)
+    print(f'Installed {destination}')
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--telegram-only', action='store_true', help='skip wacli setup')
+    parser.add_argument('--update-wacli', action='store_true', help='replace the local wacli with the tested release, keeping a backup')
+    args = parser.parse_args(argv)
+    if sys.version_info < (3, 10):
+        raise ValueError('Python 3.10 or newer is required.')
+    missing = [name for name in ('dms', 'qs', 'systemctl') if not shutil.which(name)]
+    if missing:
+        raise ValueError('Install DMS 1.6.1+, Quickshell and systemd first. Missing commands: ' + ', '.join(missing))
+    subprocess.run([sys.executable, str(ROOT / 'scripts/check-environment')], check=True)
+    if not args.telegram_only:
+        destination = Path.home() / '.local/bin/wacli'
+        if destination.exists() and not args.update_wacli:
+            try:
+                version = asyncio.run(check(destination))
+            except (ValueError, OSError) as error:
+                raise ValueError(f'{error} Run python3 scripts/setup --update-wacli to install the tested release.') from error
+            print(f'Keeping compatible {version}', flush=True)
+        else:
+            install_wacli(destination)
+    print('Preparing Python libraries…', flush=True)
+    subprocess.run([sys.executable, '-m', 'venv', str(ROOT / '.venv')], check=True)
+    subprocess.run([str(ROOT / '.venv/bin/python3'), '-m', 'pip', 'install', '-r', str(ROOT / 'backend/requirements.txt')], check=True)
+    subprocess.run([sys.executable, str(ROOT / 'scripts/install-local')], check=True)
+    print('Setup complete. Enable DankChat in DMS Settings → Plugins, add its widget and link your accounts.')
+    print('After an upgrade, restart DMS when ready (in-memory drafts will be lost).')
+    optional = [name for name in ('wl-paste', 'ffmpeg', 'notify-send') if not shutil.which(name)]
+    if optional:
+        print('Optional tools not found: ' + ', '.join(optional) + '. See the README for clipboard, voice and notification packages.')
+    print('Media playback also needs Qt Multimedia and image-format plugins; see the README for package names.')
+    return 0
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except (ValueError, OSError, subprocess.SubprocessError) as error:
+        print(f'Setup stopped: {error}', file=sys.stderr)
+        print('On Debian/Ubuntu, Python setup may also need python3-venv and python3-pip.', file=sys.stderr)
+        sys.exit(1)

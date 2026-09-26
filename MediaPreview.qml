@@ -17,6 +17,11 @@ ColumnLayout {
     readonly property bool picture: !movie && !sound && (["image", "photo", "sticker", "gif"].includes(mediaType) || /\.(png|jpe?g|webp|gif)$/i.test(path))
     readonly property bool downloading: !!service.downloads[service.selectedChat?.key + ":" + message.id]
     spacing: Theme.spacingXS
+    StyledText {
+        Layout.fillWidth: true; wrapMode: Text.Wrap; color: root.foregroundColor; font.pixelSize: Theme.fontSizeSmall
+        visible: !!root.service.transferStates?.[root.service.selectedChat?.key + ":" + root.message.id] && !root.path
+        text: I18n.trFor("dankChat", root.service.transferStates?.[root.service.selectedChat?.key + ":" + root.message.id] || "")
+    }
     AnimatedImage {
         id: imagePreview
         Layout.fillWidth: true
@@ -24,7 +29,8 @@ ColumnLayout {
         visible: root.picture && root.path.length > 0
         source: visible ? Links.localFileUrl(root.path) : ""
         fillMode: Image.PreserveAspectFit
-        playing: visible
+        sourceSize: Qt.size(960, 960)
+        playing: visible && root.service.surfaceOpen
         asynchronous: true
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.imageRequested(root.path) }
     }

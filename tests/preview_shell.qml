@@ -11,10 +11,14 @@ import "Common/StockThemes.js" as StockThemes
 ShellRoot {
     id: root
     function findItem(item, name) {
-        if (item.objectName === name) return item;
-        for (let child of item.children || []) {
-            const found = findItem(child, name);
-            if (found) return found;
+        // Avoid recursive QML-list iterators surviving nested engine GC passes.
+        const pending = [item];
+        while (pending.length) {
+            const current = pending.pop();
+            if (!current) continue;
+            if (current.objectName === name) return current;
+            const children = current.children;
+            if (children) for (let i = children.length - 1; i >= 0; --i) pending.push(children[i]);
         }
         return null;
     }
@@ -31,8 +35,55 @@ ShellRoot {
         property bool demo: true
         property bool telegramEnabled: true
         property bool whatsappEnabled: true
+        property bool settingsOpen: false
+        property var appInfo: ({version: "0.5.0", development: true, revision: "test"})
+        property var updateInfo: ({})
+        property bool checkingUpdates: false
+        property bool automaticMedia: true
+        property bool automaticUpdates: false
+        property bool readReceipts: false
+        property bool whatsappReadState: false
+        property var accounts: [{provider: "telegram", id: "", label: "Private"}, {provider: "whatsapp", id: "", label: "Work"}]
+        property var accountStatuses: ({})
+        property string accountFilter: "all"
+        property string browseMode: ""
+        property string messageQuery: ""
+        property var browseResults: []
+        property string browseNext: ""
+        property bool browsing: false
+        property var storageInfo: ({bytes: 10485760})
+        property bool storageBusy: false
+        property int mediaLimitMb: 25
+        property int cacheLimitMb: 512
+        property int cacheDays: 30
+        property var mediaTypes: ["images", "videos", "audio"]
+        property string notificationMode: "off"
+        property bool notificationPreview: false
+        property bool notificationSound: false
+        property bool suppressActive: true
+        property var transferStates: ({})
+        function accountKey(provider, account) { return provider + (account ? ":" + account : ""); }
+        function accountLabel(chat) { return accounts.find(a => a.provider === chat?.provider && a.id === (chat?.account || ""))?.label || chat?.provider || ""; }
+        function accountConnectionText(provider, account) { return "Connected"; }
+        function notificationPolicy(chat) { return "off"; }
+        function cycleChatNotifications(chat) {}
+        function preference(provider, account, key, fallback) { return fallback; }
+        function savePreference(key, value) {}
+        function saveAccountPreference(provider, account, key, value) {}
+        function changeAccount(provider, account, label, add) {}
+        function storageAction(clean, clear) {}
+        function checkUpdates(force) {}
+        function closeBrowse() { browseMode = ""; }
+        function browse(mode, query, more) { browseMode = mode; }
+        function editMessage(message, text, chat) {}
         property bool accountsOpen: false
+        property var attachmentDrafts: ({})
+        function setAttachmentPaths(paths, key) { attachmentDrafts = Object.assign({}, attachmentDrafts, {[key]: paths}); }
         property bool writing: false
+        property bool reconnecting: false
+        property var syncFailures: ({})
+        function retryConnection() {}
+        function connectionText(provider) { return I18n.trFor("dankChat", "Connected"); }
         property bool surfaceOpen: true
         property bool historyContext: false
         property string presenceText: ""
@@ -85,10 +136,10 @@ ShellRoot {
             gradient: Gradient { GradientStop { position: 0; color: "#211a30" } GradientStop { position: 1; color: "#100e16" } }
             Text { x: 64; y: 90; text: "DANKMATERIALSHELL PLUGIN"; color: "#cbb7fa"; font.pixelSize: 16; font.letterSpacing: 3 }
             Text { x: 64; y: 190; text: "DankChat"; color: "#f2ecfa"; font.pixelSize: 56; lineHeight: 1.2 }
-            Text { x: 64; y: 316; text: "Your chats, right in your bar."; color: "#c9bfd5"; font.pixelSize: 23 }
+            Text { x: 64; y: 316; text: "Your accounts. One place."; color: "#c9bfd5"; font.pixelSize: 23 }
             Rectangle { x: 64; y: 364; width: 68; height: 3; color: "#cbb7fa" }
-            Text { x: 64; y: 391; text: "Reply. React. Share."; color: "#e5ddec"; font.pixelSize: 23 }
-            Text { x: 64; y: 443; text: "Telegram + WhatsApp\nVoice messages & attachments\nDropdown + tiling window"; color: "#baadc9"; font.pixelSize: 20; lineHeight: 1.8 }
+            Text { x: 64; y: 391; text: "DankChat 0.5.0"; color: "#e5ddec"; font.pixelSize: 23 }
+            Text { x: 64; y: 443; text: "Telegram + WhatsApp accounts\nSearch, media & notifications\nDropdown + tiling window"; color: "#baadc9"; font.pixelSize: 20; lineHeight: 1.8 }
             Text { x: 64; y: 674; text: "NATIVE DMS CLIENT  /  OPEN SOURCE"; color: "#a69ab5"; font.pixelSize: 12; font.letterSpacing: 2 }
             Rectangle { x: 600; y: 64; width: 622; height: 540; radius: 20; color: Theme.surface; border.color: Theme.outline }
             Text { x: 600; y: 620; text: "Synthetic chats • No private messages"; color: "#a69ab5"; font.pixelSize: 14 }
