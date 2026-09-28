@@ -2,13 +2,30 @@
 """Read-only DMS widget preflight; never changes settings or starts a session."""
 import os
 from pathlib import Path
-import subprocess
 import sys
 
 
+def file_picker(source):
+    if (source / 'DankCommon/FileBrowser/FilePicker.qml').is_file():
+        return 'modern (DankCommon.FileBrowser.FilePicker)'
+    if (source / 'DankCommon/Modals/FileBrowser/FileBrowserContent.qml').is_file():
+        return 'legacy (DankCommon.Modals.FileBrowser.FileBrowserContent)'
+    legacy = source / 'Modals/FileBrowser/FileBrowserContent.qml'
+    if legacy.is_file():
+        # Some DMS versions only ship a wrapper around the shared component.
+        if 'qs.DankCommon.Modals.FileBrowser' in legacy.read_text() and not (
+                source / 'DankCommon/Modals/FileBrowser/FileBrowserContent.qml').is_file():
+            return None
+        return 'legacy (Modals.FileBrowser.FileBrowserContent)'
+    return None
+
+
 def check_widgets(source):
-    return [name for name in ('DankPopout', 'DankFloatingWindow')
-            if not (source / 'Widgets' / (name + '.qml')).is_file()]
+    missing = [name for name in ('DankPopout', 'DankFloatingWindow')
+               if not (source / 'Widgets' / (name + '.qml')).is_file()]
+    if not file_picker(source):
+        missing.append('FilePicker / FileBrowserContent (including DankCommon)')
+    return missing
 
 
 def main():
@@ -26,7 +43,9 @@ def main():
     if missing:
         print('Missing DMS widgets: ' + ', '.join(missing) + '. Update DMS to 1.6.1 or newer, restart the shell, then enable DankChat.')
         return 1
-    print('DMS widgets available: ' + str(source))
+    print('DMS component files available: ' + str(source))
+    print('File picker: ' + file_picker(source))
+    print('This checks component files only; use scripts/test-ui to check QML loading.')
     return 0
 
 

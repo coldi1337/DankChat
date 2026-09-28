@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls.Basic as Controls
 import QtQuick.Layouts
 import QtQuick.Window
-import qs.Modals.FileBrowser
 import Quickshell
 import qs.Common
 import qs.Widgets
@@ -18,6 +17,7 @@ Item {
     function previewAttachmentImage(path) { attachmentConfirm.contentItem.grabToImage(result => result.saveToFile(path)); }
     function attachmentPreviewStatus() { return JSON.stringify({visible: attachmentConfirm.visible, count: attachmentPaths.length, height: attachmentConfirm.height}); }
     function previewAttachments(opened) { if (opened) attachmentConfirm.open(); else attachmentConfirm.reject(); }
+    readonly property alias attachmentPicker: filePickerLoader.item
     function previewAttachmentPicker(opened) { if (opened) fileDialog.open(); else fileDialog.close(); }
     readonly property bool narrow: width < 620
     signal expandRequested()
@@ -895,6 +895,7 @@ Item {
     property var exportChat: null
     Controls.Popup {
         id: fileDialog
+        onClosed: root.savingDiagnostics = false
         anchors.centerIn: parent
         width: Math.min(root.width - 24, 860)
         height: root.height - 24
@@ -904,24 +905,30 @@ Item {
         padding: 0
         background: Rectangle { color: Theme.surfaceContainer; radius: Theme.cornerRadius; border.color: Theme.outline }
         contentItem: Loader {
+            id: filePickerLoader
             active: fileDialog.visible
-            sourceComponent: FileBrowserContent {
-                browserTitle: root.savingDiagnostics ? I18n.trFor("dankChat", "Save diagnostic report…") : root.savingMedia ? I18n.trFor("dankChat", "Save media as…") : I18n.trFor("dankChat", "Choose an attachment to send")
-                browserType: root.savingMedia ? "dankchat_export" : "dankchat_attachment"
+            sourceComponent: FilePickerCompat {
+                pickerTitle: root.savingDiagnostics ? I18n.trFor("dankChat", "Save diagnostic report…") : root.savingMedia ? I18n.trFor("dankChat", "Save media as…") : I18n.trFor("dankChat", "Choose an attachment to send")
                 saveMode: root.savingMedia
                 defaultFileName: root.savingDiagnostics ? "dankchat-diagnostics.json" : root.savingMedia ? (root.exportMessage?.filename || root.exportMessage?.mediaPath?.split("/").pop() || "media") : ""
-                fileExtensions: ["*"]
-                showSidebar: width >= 620
-                Component.onCompleted: { initialize(); forceActiveFocus(); }
-                onFileSelected: path => {
-                    const value = path.toString();
-                    const selectedPath = value.startsWith("file://") ? decodeURIComponent(value.slice(7)) : value;
+                onLoadErrorChanged: if (loadError) {
+                    root.service.errorText = I18n.trFor("dankChat", loadError);
+                    root.savingDiagnostics = false;
                     fileDialog.close();
-                    if (root.savingDiagnostics) { root.savingDiagnostics = false; root.service.exportDiagnostics(selectedPath); }
-                    else if (root.savingMedia) root.service.saveMedia(root.exportChat, root.exportMessage, selectedPath);
-                    else { root.addAttachments([selectedPath]); }
                 }
-                onCloseRequested: { root.savingDiagnostics = false; fileDialog.close(); if (!root.savingMedia && root.attachmentPaths.length) attachmentConfirm.open(); }
+                onFilesSelected: paths => {
+                    const selectedPaths = paths.map(path => {
+                        const value = path.toString();
+                        return value.startsWith("file://") ? decodeURIComponent(value.slice(7)) : value;
+                    });
+                    if (!selectedPaths.length) return;
+                    const diagnostics = root.savingDiagnostics;
+                    fileDialog.close();
+                    if (diagnostics) root.service.exportDiagnostics(selectedPaths[0]);
+                    else if (root.savingMedia) root.service.saveMedia(root.exportChat, root.exportMessage, selectedPaths[0]);
+                    else root.addAttachments(selectedPaths);
+                }
+                onCancelled: { root.savingDiagnostics = false; fileDialog.close(); if (!root.savingMedia && root.attachmentPaths.length) attachmentConfirm.open(); }
             }
         }
     }

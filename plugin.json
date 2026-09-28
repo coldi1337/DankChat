@@ -2,7 +2,7 @@
   "id": "dankChat",
   "name": "DankChat",
   "description": "Telegram and WhatsApp chats in one native DMS interface.",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "author": "coldi1337",
   "license": "MIT",
   "icon": "forum",

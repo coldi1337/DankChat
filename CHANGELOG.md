@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.5.1 — 2026-09-28
+
+### Fixed
+
+- Fix the blank chat window on newer DMS builds where `FileBrowserContent` was
+  removed. The file dialog now selects the modern or legacy native picker at
+  runtime, preserving support for older DMS versions (issue #1).
+- Preserve the native picker's layout and theming when loading it dynamically.
+- Show a clear English/German error if no compatible picker is available, while
+  keeping the conversation usable.
+- Clear diagnostic-export mode when the file dialog is dismissed.
+
+### Improved
+
+- Support selecting multiple attachments at once in the modern DMS picker.
+- Check file-picker components and shared dependencies in `check-environment`,
+  and distinguish this file check from a full QML runtime test.
+- Extend UI coverage for selection, media/diagnostic export, cancellation,
+  missing picker types and layout geometry on both DMS generations.
+- Fix the test runner's shutdown path after a QML loading failure and isolate
+  its home directory as well as its settings and account data.
+
+### Upgrade notes
+
+Update DankChat and restart DMS. If setup has not been run since upgrading from
+0.4, run `python3 scripts/setup` in the plugin folder first. This patch adds no
+new dependencies and preserves existing accounts and settings. Restarting DMS
+clears drafts held only in memory.
+
 ## 0.5.0 — 2026-09-26
 
 ### Added

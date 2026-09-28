@@ -739,5 +739,8 @@
   },
   "QR dependencies are missing. Run python3 scripts/setup.": {
     "QR dependencies are missing. Run python3 scripts/setup.": "Die QR-Abhängigkeiten fehlen. Führe python3 scripts/setup aus."
+  },
+  "No compatible file picker is available. Update DMS and run python3 scripts/check-environment.": {
+    "No compatible file picker is available. Update DMS and run python3 scripts/check-environment.": "Kein kompatibler Dateidialog verfügbar. Aktualisiere DMS und führe python3 scripts/check-environment aus."
   }
 }

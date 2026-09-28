@@ -29,7 +29,17 @@ ShellRoot {
     property int voicePreviewWaits: 0
     property int testWidth: 900
     Rectangle { id: contrastProbe; color: Colors.readable(Theme.primaryContainer, Theme.surfaceText, Theme.primaryText) }
-    Component.onCompleted: { DC.Style.theme = Theme; DC.Style.settings = SettingsData; SessionData.locale = root.english ? "en" : "de"; I18n.registerPluginTranslations("dankChat", JSON.parse(Quickshell.env("DANKCHAT_TEST_TRANSLATIONS"))); }
+    Component.onCompleted: { DC.Style.theme = Theme; DC.Style.settings = SettingsData; DC.I18n.backend = I18n; if ("files" in DC.Host) DC.Host.files = testFiles; SessionData.locale = root.english ? "en" : "de"; I18n.registerPluginTranslations("dankChat", JSON.parse(Quickshell.env("DANKCHAT_TEST_TRANSLATIONS"))); }
+    QtObject {
+        id: testFiles
+        property bool connected: true
+        property var capabilities: ({})
+        property var userDirs: [{key: "home", name: "Test files", path: "/tmp"}]
+        signal watchEvent(var data)
+        function watch(path, options, callback) { Qt.callLater(() => callback({watchId: "fixture", entries: [], total: 0, watching: true})); }
+        function unwatch(id) {}
+        function stat(path, callback) { Qt.callLater(() => callback({error: "Not found", code: "ENOENT"})); }
+    }
     QtObject {
         id: mock
         signal messagesReplacing()
@@ -37,7 +47,7 @@ ShellRoot {
         property bool telegramEnabled: true
         property bool whatsappEnabled: true
         property bool settingsOpen: false
-        property var appInfo: ({version: "0.5.0", development: true, revision: "test"})
+        property var appInfo: ({version: "0.5.1", development: true, revision: "test"})
         property var updateInfo: ({})
         property bool checkingUpdates: false
         property bool automaticMedia: true
@@ -77,6 +87,9 @@ ShellRoot {
         function closeBrowse() { browseMode = ""; }
         function browse(mode, query, more) { browseMode = mode; }
         function editMessage(message, text, chat) {}
+        property var savedFiles: []
+        function saveMedia(chat, message, path) { savedFiles = savedFiles.concat([{kind: "media", path: path}]); }
+        function exportDiagnostics(path) { savedFiles = savedFiles.concat([{kind: "diagnostics", path: path}]); }
         property bool accountsOpen: false
         property var attachmentDrafts: ({})
         function setAttachmentPaths(paths, key) { attachmentDrafts = Object.assign({}, attachmentDrafts, {[key]: paths}); }
@@ -145,7 +158,7 @@ ShellRoot {
             width: root.testWidth
             height: 700
             Component.onCompleted: setSource(Quickshell.env("DANKCHAT_TEST_VIEW"), {service: mock, compact: false})
-            onStatusChanged: if (status === Loader.Error) { console.error("TEST: view failed " + Qt.createComponent(Quickshell.env("DANKCHAT_TEST_VIEW")).errorString()); Quickshell.quit(); }
+            onStatusChanged: if (status === Loader.Error) { console.error("TEST: view failed " + Qt.createComponent(Quickshell.env("DANKCHAT_TEST_VIEW")).errorString()); }
         }
     }
     IpcHandler {
@@ -165,7 +178,7 @@ ShellRoot {
             if (I18n.trFor("dankChat", "Unread chats") !== (root.english ? "Unread chats" : "Ungelesene Chats")) return "FAIL unread translation";
             const pinError = I18n.trFor("dankChat", "Telegram pin limit reached: the main chat list allows 5 pinned chats without Premium (10 with Premium). Unpin another chat first.");
             if (!pinError.startsWith(root.english ? "Telegram pin limit" : "Telegram-Pin-Limit")) return "FAIL pin-limit translation";
-            mock.errorText = root.step >= 24 && root.step <= 27 ? pinError : "";
+            if (Quickshell.env("DANKCHAT_TEST_MISSING_PICKER") !== "1") mock.errorText = root.step >= 24 && root.step <= 27 ? pinError : "";
             mock.statuses = root.step % 2 ? {telegram: {authorized: true}, whatsapp: {authorized: true}} : {};
             if (root.step < 121) mock.accountsOpen = root.step >= 60 ? false : root.step % 7 < 2;
             root.testWidth = root.step >= 60 ? 480 : [360, 480, 760, 1080][root.step % 4];
@@ -288,6 +301,22 @@ ShellRoot {
             }
             if (root.step === 30) { view.item.savingMedia = true; view.item.exportMessage = {filename: "synthetic.png"}; }
             if (root.step === 10 || root.step === 30) view.item.previewAttachmentPicker(true);
+            if (root.step === 12 || root.step === 32) {
+                const picker = view.item.attachmentPicker;
+                if (Quickshell.env("DANKCHAT_TEST_MISSING_PICKER") === "1") {
+                    if (view.status !== Loader.Ready || !mock.errorText || !mock.errorText.includes("file picker")) return "FAIL missing picker blanked chat or hid error";
+                    return "PASS missing picker keeps chat loaded and reports error";
+                }
+                if (!picker || picker.status !== Loader.Ready || picker.loadError) return "FAIL file picker did not load: " + JSON.stringify({exists: !!picker, status: picker?.status, error: picker?.loadError, implementation: picker?.implementation, details: picker?.componentErrors});
+                const expected = Quickshell.env("DANKCHAT_EXPECT_PICKER");
+                if (expected && picker.implementation !== expected) return "FAIL wrong file picker adapter";
+                const nativePicker = picker.item;
+                if (!nativePicker) return "FAIL missing native file picker";
+                if (picker.implementation === "modern" && nativePicker.children[0].height < 20) return "FAIL picker header collapsed";
+
+                if (root.step === 12) nativePicker.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/file-picker-" + picker.implementation + ".png"));
+                if (root.step === 32 && (picker.defaultFileName !== "synthetic.png" || !picker.saveMode)) return "FAIL save picker configuration";
+            }
             if (root.step === 20 || root.step === 40) view.item.previewAttachmentPicker(false);
             if (root.step === 50) {
                 mock.accountsOpen = false;
@@ -394,7 +423,7 @@ ShellRoot {
             if (root.step === 124) {
                 if (I18n.trFor("dankChat", "Settings") !== (root.english ? "Settings" : "Einstellungen")) return "FAIL settings translation";
                 const version = root.findItem(view.item, "installedVersion");
-                if (!version || version.text !== "DankChat v0.5.0") return "FAIL installed version";
+                if (!version || version.text !== "DankChat v0.5.1") return "FAIL installed version";
                 view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/settings.png"));
             }
             if (root.step === 125) { mock.settingsOpen = false; mock.accountsOpen = true; mock.accounts = [{provider: "telegram", id: "a", label: "Privat und Familie"}, {provider:"whatsapp", id:"b", label:"Arbeit und Projekte"}, {provider:"telegram", id:"c", label:"Zweites Telegram-Konto"}]; }
@@ -413,7 +442,63 @@ ShellRoot {
                 if (Math.abs(root.findItem(view.item, "unreadFilter").width - selectors.width) > 1) return "FAIL unread button does not fill sidebar";
                 view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/account-buttons.png"));
             }
-            return root.step === 137 ? "PASS accounts, settings, search, resize, picker open/close" : "STEP " + root.step;
+            if (root.step === 138) {
+                mock.selectedChat = mock.chats[0];
+                view.item.savingMedia = false;
+                view.item.previewAttachmentPicker(true);
+            }
+            if (root.step === 140) {
+                const adapter = view.item.attachmentPicker;
+                const nativePicker = adapter.item;
+                const path = Quickshell.env("DANKCHAT_TEST_IMAGE");
+                if (adapter.implementation === "modern") nativePicker.accepted([path, Quickshell.env("DANKCHAT_TEST_VIDEO")]);
+                else nativePicker.fileSelected("file://" + path);
+                if (view.item.attachmentPaths[0] !== path) return "FAIL picker attachment routing";
+                if (adapter.implementation === "modern" && view.item.attachmentPaths.length !== 2) return "FAIL picker multiple files";
+                mock.setAttachmentPaths([], view.item.attachmentChatKey);
+                view.item.previewAttachments(false);
+            }
+            if (root.step === 141) {
+                view.item.savingMedia = true;
+                view.item.previewAttachmentPicker(true);
+            }
+            if (root.step === 142) {
+                const adapter = view.item.attachmentPicker;
+                const nativePicker = adapter.item;
+                if (adapter.implementation === "modern") {
+
+                    if (nativePicker.children[0].height < 20) return "FAIL picker header collapsed";
+                }
+                nativePicker.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/file-picker-final-" + adapter.implementation + ".png"));
+            }
+            if (root.step === 143) {
+                const adapter = view.item.attachmentPicker;
+                const nativePicker = adapter.item;
+                if (adapter.implementation === "modern") nativePicker.accepted(["/tmp/synthetic-export.png"]);
+                else nativePicker.fileSelected("file:///tmp/synthetic-export.png");
+                if (mock.savedFiles.length !== 1 || mock.savedFiles[0].path !== "/tmp/synthetic-export.png") return "FAIL picker media export";
+            }
+            if (root.step === 144) {
+                view.item.savingDiagnostics = true;
+                view.item.previewAttachmentPicker(true);
+            }
+            if (root.step === 146) {
+                const adapter = view.item.attachmentPicker;
+                const nativePicker = adapter.item;
+                if (adapter.implementation === "modern") nativePicker.rejected();
+                else nativePicker.closeRequested();
+                if (view.item.savingDiagnostics || mock.savedFiles.length !== 1) return "FAIL cancelled picker exported data";
+                view.item.savingDiagnostics = true;
+                view.item.previewAttachmentPicker(true);
+            }
+            if (root.step === 148) {
+                const adapter = view.item.attachmentPicker;
+                const nativePicker = adapter.item;
+                if (adapter.implementation === "modern") nativePicker.accepted(["/tmp/synthetic-diagnostics.json"]);
+                else nativePicker.fileSelected("file:///tmp/synthetic-diagnostics.json");
+                if (mock.savedFiles.length !== 2 || mock.savedFiles[1].kind !== "diagnostics" || view.item.savingDiagnostics) return "FAIL picker diagnostic export";
+            }
+            return root.step === 150 ? "PASS accounts, settings, search, resize, picker selection/save/cancel" : "STEP " + root.step;
 
         }
     }

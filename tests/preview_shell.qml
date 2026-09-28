@@ -36,7 +36,7 @@ ShellRoot {
         property bool telegramEnabled: true
         property bool whatsappEnabled: true
         property bool settingsOpen: false
-        property var appInfo: ({version: "0.5.0", development: true, revision: "test"})
+        property var appInfo: ({version: "0.5.1", development: true, revision: "test"})
         property var updateInfo: ({})
         property bool checkingUpdates: false
         property bool automaticMedia: true
@@ -154,7 +154,7 @@ ShellRoot {
             width: root.testWidth
             height: root.promo ? 744 : 700
             Component.onCompleted: setSource(Quickshell.env("DANKCHAT_TEST_VIEW"), {service: mock, compact: false})
-            onStatusChanged: if (status === Loader.Error) { console.error("TEST: view failed " + Qt.createComponent(Quickshell.env("DANKCHAT_TEST_VIEW")).errorString()); Quickshell.quit(); }
+            onStatusChanged: if (status === Loader.Error) { console.error("TEST: view failed " + Qt.createComponent(Quickshell.env("DANKCHAT_TEST_VIEW")).errorString()); }
         }
     }
     IpcHandler {

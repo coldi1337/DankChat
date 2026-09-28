@@ -6,7 +6,7 @@ python3 -B -m unittest discover -s tests -p 'test_*.py'
 WHATSAPP_SCRIPT="$project_dir/vendor/whatsapp/bin/whatsapp_client.py" python3 -B -m unittest discover -s vendor/whatsapp/tests -p 'test_*.py'
 qmlformat_bin=$(command -v qmlformat || true)
 if [ -z "$qmlformat_bin" ]; then qmlformat_bin=/usr/lib/qt6/bin/qmlformat; fi
-for component in BarWidget.qml Service.qml Settings.qml ChatView.qml MediaPreview.qml MediaPlayerView.qml AppSettings.qml AccountView.qml MessageBrowser.qml; do
+for component in BarWidget.qml Service.qml Settings.qml ChatView.qml MediaPreview.qml MediaPlayerView.qml AppSettings.qml AccountView.qml MessageBrowser.qml FilePickerCompat.qml; do
     "$qmlformat_bin" -n "$component" >/dev/null
 done
 qmltest_bin=$(command -v qmltestrunner || true)

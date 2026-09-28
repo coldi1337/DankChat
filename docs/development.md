@@ -44,8 +44,10 @@ the picker itself works offline.
 
 ## Compatibility checks
 
-`python3 scripts/check-environment` checks the DMS widgets without changing the
-session. `python3 scripts/test-wacli /path/to/wacli` checks the command interface
+`python3 scripts/check-environment` checks the DMS window and file-picker component
+files without changing the session. It recognizes both legacy and modern file
+browsers, including their DankCommon dependency. This is a file preflight, not a
+QML runtime test. `python3 scripts/test-wacli /path/to/wacli` checks the command interface
 and chat adapter against a disposable database. It does not use linked accounts
 or send messages. The recommended, tested wacli release is 0.19.0; compatible
 versions from 0.17.1 are accepted.
@@ -91,3 +93,19 @@ keeping the previous binary. The archive is read without extracting paths or lin
 
 The fresh-install validation uses an isolated HOME and real release/Python downloads;
 only the final DMS scan and systemd reload are stubbed. No accounts are linked.
+
+
+The attachment dialog loads `FilePickerCompat.qml` lazily. It selects the current
+DankCommon `FilePicker` or the legacy `FileBrowserContent` without referring to an
+optional type in the chat view. The stable file-browser module import lets
+Quickshell register the host modules; the concrete type is then selected lazily
+through its module, preserving singleton layout metrics. Selection, save and cancel signals
+are mapped to the same application actions; the modern picker supports selecting
+multiple attachments at once. A missing picker leaves the conversation usable and
+shows a translated error when the dialog is requested.
+
+For picker regression checks, set `DANKCHAT_EXPECT_PICKER=legacy` or `modern` when
+running `scripts/test-ui` against the respective DMS source. `--missing-picker`
+removes the picker components only from the disposable fixture and must pass;
+`--invalid-view` deliberately creates a broken fixture and must exit nonzero with
+its original QML error, without a secondary shutdown exception.

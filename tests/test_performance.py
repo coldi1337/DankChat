@@ -101,6 +101,17 @@ class SentPreviewTests(unittest.TestCase):
             self.assertIn('DankPopout', module.check_widgets(source))
             for name in ('DankPopout', 'DankFloatingWindow'):
                 (source / 'Widgets' / (name + '.qml')).touch()
+            self.assertTrue(any('FilePicker' in item for item in module.check_widgets(source)))
+            modern = source / 'DankCommon/FileBrowser/FilePicker.qml'
+            modern.parent.mkdir(parents=True); modern.touch()
+            self.assertEqual(module.check_widgets(source), [])
+            modern.unlink()
+            legacy = source / 'Modals/FileBrowser/FileBrowserContent.qml'
+            legacy.parent.mkdir(parents=True)
+            legacy.write_text('import qs.DankCommon.Modals.FileBrowser as DC\nDC.FileBrowserContent {}')
+            self.assertTrue(any('FilePicker' in item for item in module.check_widgets(source)))
+            shared = source / 'DankCommon/Modals/FileBrowser/FileBrowserContent.qml'
+            shared.parent.mkdir(parents=True); shared.touch()
             self.assertEqual(module.check_widgets(source), [])
 
 class TelegramDownloadTests(unittest.IsolatedAsyncioTestCase):

@@ -419,3 +419,46 @@ The README preview is rendered from the current QML with English synthetic chats
 named accounts and the default purple theme. No private conversations are included.
 The previous live-interaction limits (new real account linking, phone-side reads and
 real transfers) still apply; automated tests use synthetic providers.
+
+
+## 2026-09-28 — issue #1, file-browser compatibility (local patch)
+
+The reporter confirmed that 0.5.0 fixed DankPopoutStandalone, then supplied a new
+FileBrowserContent load error. DMS commit 6e9bbc15 removed the old public content
+wrapper and switched to the shared FilePicker API. This is a separate compatibility
+problem; the reporter's portal/PipeWire warnings do not establish its cause.
+
+The patch selects the host picker lazily, maps open/save/cancel actions, retains
+attachment staging and supports the modern picker's multiple selection. The stable
+file-browser import registers the shared QML modules; loading raw component paths
+alone was rejected during visual testing because singleton layout metrics collapsed.
+The regression fixture now asserts header height as well as successful loading.
+Missing native picker types produce a translated error without blanking the chat.
+The preflight checks both generations and the legacy shared dependency; its output
+explicitly distinguishes file presence from runtime loading.
+
+The UI fixtures initialize the modern host with a synthetic directory service and
+wire its translation backend. Selection/export checks never send messages or write
+real exports. The invalid-view fixture is stopped by the Python runner, preserving
+the original QML error without calling the nonexistent Quickshell.quit method.
+
+
+Validation: 93 project tests, 152 vendor tests with one intentional skip, Qt tests,
+manifest validation and QML parsing pass. Picker UI tests pass with the installed
+DMS 1.6.2 legacy components and current DMS source a609b5f999a9182e002b226f2197347b0d1bc747
+with pinned DankCommon 660b04470bb7937b970c862024bcadd7000e6a89. English and German
+runs cover selection, modern multi-selection, save-media and diagnostic routing,
+cancellation and native layout geometry. The missing-picker fixture passes; the
+invalid-view fixture fails as intended with its original error and a clean runner
+shutdown. Native picker screenshots were inspected locally and are not published.
+The test harness now also uses an isolated HOME for file-browser fixtures.
+
+These are source/runtime compatibility checks using installed Quickshell/Qt,
+not an installation or full reproduction of the reporter's ChaoticAUR package.
+The modern directory backend is synthetic in the UI fixture; the real latest DMS
+FilesService is supplied by the running host on users' systems.
+
+
+Release 0.5.1 preparation: the complete Python/vendor/Qt/QML/manifest suite and
+modern-picker English UI fixture were rerun successfully after the version bump.
+This patch is included in the 0.5.1 changelog; no new system dependencies were added.
