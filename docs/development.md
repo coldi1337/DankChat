@@ -6,11 +6,18 @@ coverage and results; other compositor/distribution combinations aren't verified
 
 ## Tests
 
-After running `sh scripts/setup-telegram`:
+Use a disposable HOME/XDG environment for the unit suite so provider fixtures
+cannot access real account directories. For example, from the repository:
 
 ```sh
-.venv/bin/pip install jsonschema
-sh scripts/test
+test_root=$(mktemp -d)
+mkdir -p "$test_root/home" "$test_root/run"
+chmod 700 "$test_root/run"
+env HOME="$test_root/home" XDG_CONFIG_HOME="$test_root/config" \
+  XDG_CACHE_HOME="$test_root/cache" XDG_STATE_HOME="$test_root/state" \
+  XDG_DATA_HOME="$test_root/data" XDG_RUNTIME_DIR="$test_root/run" \
+  PATH="$PWD/.venv/bin:$PATH" sh -c \
+  'sh scripts/setup-telegram && .venv/bin/pip install jsonschema && sh scripts/test'
 ```
 
 This runs Python tests, QtTest suites, QML parsing and manifest-schema validation.

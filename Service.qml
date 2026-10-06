@@ -41,15 +41,19 @@ PluginComponent {
     }
     property bool readingLatest: false
     property var automaticReadAttempts: ({})
+    property var automaticReadFailures: ({})
     function readVisibleChat() {
         if (!surfaceOpen || settingsOpen || accountsOpen || !!browseMode || !readingLatest || historyContext || loadingMessages || !selectedChat || !messages.length) return;
         const chat = selectedChat;
         if (!syncReadEnabled(chat)) return;
         const latest = messages[messages.length - 1].id;
-        if (automaticReadAttempts[chat.key] === latest) return;
-        automaticReadAttempts = Object.assign({}, automaticReadAttempts, {[chat.key]: latest});
-        markChatRead(chat, latest);
+        // A running read rechecks the latest message when it finishes; a failed
+        // one is retried after a pause instead of being forgotten.
+        if (automaticReadAttempts[chat.key] === latest || markingRead[chat.key]) return;
+        if (Date.now() - (automaticReadFailures[chat.key] || 0) < 15000) return;
+        markChatRead(chat, latest, true);
     }
+    Timer { id: readRetryTimer; interval: 15500; onTriggered: root.readVisibleChat() }
     property var accounts: [{provider: "telegram", id: "", label: "Telegram"}, {provider: "whatsapp", id: "", label: "WhatsApp"}]
     property var accountStatuses: ({})
     property string accountFilter: "all"
@@ -96,15 +100,15 @@ PluginComponent {
     function editMessage(message, text, chat) {
         if (!chat || !message.out || writing || demo) return;
         writing = true;
-        sendRequest(chat.provider, "edit", {chat: chat, messageId: message.id, text: text}, result => {
+        if (!sendRequest(chat.provider, "edit", {chat: chat, messageId: message.id, text: text}, result => {
             writing = false;
             if (!result.ok) { errorText = I18n.trFor("dankChat", result.error); return; }
             const update = rows => rows.map(row => row.id === message.id ? Object.assign({}, row, {text: text, edited: true}) : row);
             cacheMessages(chat.key, update(messageCache[chat.key] || []));
             if (selectedChat?.key === chat.key) messages = update(messages);
             if (confirmedMessages[chat.key]) delete confirmedMessages[chat.key][message.id];
-            refreshProvider(chat.provider);
-        });
+            refreshAccount(chat.provider, chat.account || "");
+        })) writing = false;
     }
     property var storageInfo: ({})
     property bool storageBusy: false
@@ -192,7 +196,8 @@ PluginComponent {
     property int reconnectAttempts: 0
     property bool reconnecting: false
     property bool interruptedWrite: false
-    property var changedProviders: ({})
+    property var changedAccounts: ({})
+    property var chatSignatures: ({})
     property var diagnosticRequests: []
     function connectionText(provider) {
         if (syncFailures[provider]) return I18n.trFor("dankChat", "Connection interrupted — retrying");
@@ -204,21 +209,38 @@ PluginComponent {
     }
     function retryConnection() {
         if (demo) return;
-        reconnectAttempts = 0;
+        reconnectAttempts = 0; interruptedWrite = false;
         if (!bridge.running) { reconnecting = true; bridge.running = true; }
         else refresh();
     }
-    function providerChanged(provider) {
+    // Legacy/test bridges may omit account; then all accounts of the service refresh.
+    function providerChanged(provider, account, chatId) {
         if (!["telegram", "whatsapp"].includes(provider)) return;
-        if (surfaceOpen && selectedChat?.provider === provider) loadMessages();
-        changedProviders = Object.assign({}, changedProviders, {[provider]: true});
+        const scoped = typeof account === "string";
+        if (surfaceOpen && selectedChat?.provider === provider && (!scoped || (selectedChat.account || "") === account)
+                && (!chatId || String(selectedChat.id) === String(chatId)) && !messageUpdateTimer.running) messageUpdateTimer.start();
+        const identity = scoped ? accountKey(provider, account) : provider + ":*";
+        changedAccounts = Object.assign({}, changedAccounts, {[identity]: {provider: provider, account: scoped ? account : null}});
         if (!providerUpdateTimer.running) providerUpdateTimer.start();
     }
+    function accountRefreshPending(provider, account) {
+        return Object.values(pending).some(entry => entry.provider === provider && entry.account === account && ["status", "chats"].includes(entry.action));
+    }
+    // Busy groups emit many updates; bundle them. In the background only badges
+    // and notifications depend on them, so a longer delay is enough.
+    Timer { id: messageUpdateTimer; interval: 300; onTriggered: root.loadMessages() }
     Timer {
-        id: providerUpdateTimer; interval: 150
+        id: providerUpdateTimer; interval: root.surfaceOpen ? 1000 : 10000
         onTriggered: {
-            const changed = root.changedProviders; root.changedProviders = {};
-            Object.keys(changed).forEach(provider => root.refreshProvider(provider));
+            const waiting = {};
+            Object.entries(root.changedAccounts).forEach(([identity, change]) => {
+                const targets = change.account === null ? root.accounts.filter(a => a.provider === change.provider).map(a => a.id) : [change.account];
+                // A refresh already in flight may predate the update; retry after it.
+                if (targets.some(id => root.accountRefreshPending(change.provider, id))) waiting[identity] = change;
+                else targets.forEach(id => root.refreshAccount(change.provider, id));
+            });
+            root.changedAccounts = waiting;
+            if (Object.keys(waiting).length) start();
         }
     }
     Timer {
@@ -229,11 +251,24 @@ PluginComponent {
     property var drafts: ({})
     property var replies: ({})
     property var attachmentDrafts: ({})
+    // Attachments whose upload failed without a clear answer, per chat. They stay
+    // in the draft but are not sent again until explicitly included.
+    property var attachmentUnconfirmed: ({})
+    function setUnconfirmedAttachments(key, paths) {
+        const values = Object.assign({}, attachmentUnconfirmed);
+        if (paths.length) values[key] = paths; else delete values[key];
+        attachmentUnconfirmed = values;
+    }
     function setAttachmentPaths(paths, key) {
         if (!key) return;
         const values = Object.assign({}, attachmentDrafts);
         if (paths.length) values[key] = paths.slice(); else delete values[key];
         attachmentDrafts = values;
+        const held = attachmentUnconfirmed[key] || [];
+        if (held.some(path => !paths.includes(path))) setUnconfirmedAttachments(key, held.filter(path => paths.includes(path)));
+    }
+    function includeUnconfirmedAttachment(key, path) {
+        setUnconfirmedAttachments(key, (attachmentUnconfirmed[key] || []).filter(value => value !== path));
     }
     property var downloads: ({})
     property var automaticMediaAttempts: ({})
@@ -346,6 +381,9 @@ PluginComponent {
         voiceState = ""; voicePath = ""; attachmentDrafts = {};
         checkingUpdates = false; automaticReadAttempts = {}; readingLatest = false;
         markingRead = {}; reacting = {}; presenceBusy = false; chatPresence = {};
+        // Callbacks from the previous configuration are dropped, so nothing else clears these.
+        writing = false; automaticReadFailures = {}; attachmentUnconfirmed = {};
+        changedAccounts = {}; chatSignatures = {};
         configurationEpoch++; notificationSnapshots = {}; accountStatuses = {};
         downloads = {}; automaticMediaAttempts = {}; messageCache = {}; messageRequests = {}; messageReloads = {}; confirmedMessages = {}; visibleMediaIds = [];
         loadingMessages = false;
@@ -376,6 +414,7 @@ PluginComponent {
                 if (owner === provider && !account) { delete cache[key]; delete sent[key]; }
             });
             messageCache = cache; confirmedMessages = sent;
+            delete chatSignatures[provider];
             chats = chats.filter(chat => chat.provider !== provider || !!chat.account);
             if (selectedChat?.provider === provider && !selectedChat.account) { selectedChat = null; messages = []; }
             return false;
@@ -383,37 +422,47 @@ PluginComponent {
         return result.authorized === true;
     }
     function refreshProvider(provider) {
+        accounts.filter(a => a.provider === provider).forEach(account => refreshAccount(provider, account.id));
+    }
+    function refreshAccount(provider, accountId) {
         if (demo || (provider === "telegram" && !telegramEnabled) || (provider === "whatsapp" && !whatsappEnabled)) return;
-        accounts.filter(a => a.provider === provider).forEach(account => {
-            const identity = accountKey(provider, account.id);
+        if (!accounts.some(a => a.provider === provider && a.id === accountId)) return;
+        const identity = accountKey(provider, accountId);
+        if (accountBusy[identity]) return;
+        sendRequest(provider, "status", {account: accountId}, result => {
             if (accountBusy[identity]) return;
-            sendRequest(provider, "status", {account: account.id}, result => {
-                if (accountBusy[identity]) return;
-                accountStatuses = Object.assign({}, accountStatuses, {[identity]: result});
-                if (!account.id) {
-                    if (!acceptProviderStatus(provider, result)) return;
-                } else if (!result.ok) {
-                    syncFailures = Object.assign({}, syncFailures, {[identity]: true}); return;
-                } else {
-                    const failures = Object.assign({}, syncFailures); delete failures[identity]; syncFailures = failures;
-                    if (!result.authorized) {
-                        chats = chats.filter(c => accountKey(c.provider, c.account) !== identity);
-                        if (selectedChat && accountKey(selectedChat.provider, selectedChat.account) === identity) { selectedChat = null; messages = []; }
-                        return;
-                    }
+            accountStatuses = Object.assign({}, accountStatuses, {[identity]: result});
+            if (!accountId) {
+                if (!acceptProviderStatus(provider, result)) return;
+            } else if (!result.ok) {
+                syncFailures = Object.assign({}, syncFailures, {[identity]: true}); return;
+            } else {
+                const failures = Object.assign({}, syncFailures); delete failures[identity]; syncFailures = failures;
+                if (!result.authorized) {
+                    delete chatSignatures[identity];
+                    chats = chats.filter(c => accountKey(c.provider, c.account) !== identity);
+                    if (selectedChat && accountKey(selectedChat.provider, selectedChat.account) === identity) { selectedChat = null; messages = []; }
+                    return;
                 }
-                sendRequest(provider, "chats", {account: account.id}, result => {
-                    if (!result.ok) { syncFailures = Object.assign({}, syncFailures, {[identity]: true}); return; }
-                    const incoming = (result.chats || []).map(chat => syncReadEnabled(chat) ? Object.assign({}, chat, {unread: chat.serverUnread ?? chat.unread}) : chat);
-                    considerNotifications(incoming, identity);
-                    const failures = Object.assign({}, syncFailures); delete failures[identity]; syncFailures = failures;
-                    const updated = chats.filter(c => accountKey(c.provider, c.account) !== identity).concat(incoming)
-                        .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.timestamp - a.timestamp || a.key.localeCompare(b.key));
-                    if (JSON.stringify(updated) !== JSON.stringify(chats)) chats = updated;
-                    lastChecks = Object.assign({}, lastChecks, {[identity]: Date.now()});
-                    if (surfaceOpen && selectedChat && accountKey(selectedChat.provider, selectedChat.account) === identity) loadMessages();
-                    if (changedProviders[provider]) providerUpdateTimer.restart();
-                });
+            }
+            sendRequest(provider, "chats", {account: accountId}, result => {
+                if (!result.ok) { syncFailures = Object.assign({}, syncFailures, {[identity]: true}); return; }
+                const failures = Object.assign({}, syncFailures); delete failures[identity]; syncFailures = failures;
+                lastChecks = Object.assign({}, lastChecks, {[identity]: result.checkedAt ? result.checkedAt * 1000 : Date.now()});
+                // Unchanged lists are common: compare one serialized response
+                // instead of rebuilding and serializing the merged list twice.
+                const syncRead = syncReadEnabled({provider: provider, account: accountId});
+                const signature = (syncRead ? "1" : "0") + JSON.stringify(result.chats || []);
+                if (chatSignatures[identity] === signature) return;
+                chatSignatures[identity] = signature;
+                const incoming = (result.chats || []).map(chat => syncRead ? Object.assign({}, chat, {unread: chat.serverUnread ?? chat.unread}) : chat);
+                considerNotifications(incoming, identity);
+                const selectedBefore = selectedChat ? JSON.stringify(chats.find(c => c.key === selectedChat.key) || null) : "";
+                chats = chats.filter(c => accountKey(c.provider, c.account) !== identity).concat(incoming)
+                    .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.timestamp - a.timestamp || a.key.localeCompare(b.key));
+                // Reload the open conversation only when its row changed.
+                if (surfaceOpen && selectedChat && accountKey(selectedChat.provider, selectedChat.account) === identity
+                        && JSON.stringify(incoming.find(c => c.key === selectedChat.key) || null) !== selectedBefore) loadMessages();
             });
         });
     }
@@ -422,7 +471,7 @@ PluginComponent {
         ["telegram", "whatsapp"].forEach(provider => refreshProvider(provider));
     }
     function selectChat(chat) {
-        historyContext = false; readingLatest = false;
+        historyContext = false; readingLatest = false; interruptedWrite = false;
         const attempts = Object.assign({}, automaticReadAttempts); delete attempts[chat.key]; automaticReadAttempts = attempts;
         selectedChat = chat; messages = messageCache[chat.key] || []; errorText = "";
         visibleMediaIds = []; loadingMessages = false;
@@ -431,6 +480,9 @@ PluginComponent {
         if (chat.provider === "whatsapp" && !syncReadEnabled(chat))
             sendRequest("whatsapp", "acknowledge", {chat: chat}, result => { if (!result.ok) errorText = I18n.trFor("dankChat", result.error); else refreshProvider("whatsapp"); });
     }
+    // Serialized form of `messages` as last loaded, to skip unchanged polls cheaply.
+    property string messageSignature: ""
+    onMessagesChanged: messageSignature = ""
     function loadMessages(force) {
         if (!selectedChat || historyContext || demo) return;
         const chat = selectedChat;
@@ -451,7 +503,8 @@ PluginComponent {
                 const incoming = mergeMessages(chat.key, result.messages || []);
                 cacheMessages(chat.key, incoming);
                 if (current && !historyContext) {
-                    if (JSON.stringify(incoming) !== JSON.stringify(messages)) { messagesReplacing(); messages = incoming; }
+                    const signature = JSON.stringify(incoming);
+                    if (signature !== messageSignature) { messagesReplacing(); messages = incoming; messageSignature = signature; }
                     Qt.callLater(loadNextMedia);
                     Qt.callLater(readVisibleChat);
                 }
@@ -494,7 +547,7 @@ PluginComponent {
         }
         const chat = selectedChat;
         const text = draft;
-        writing = true; errorText = "";
+        writing = true; errorText = ""; interruptedWrite = false;
         transferState(chat.key + ":send", "Sending…");
         if (!sendRequest(chat.provider, path ? "file" : "send", {chat: chat, text: text, path: path || "", replyId: reply?.id || ""}, result => {
             writing = false;
@@ -561,7 +614,9 @@ PluginComponent {
         onTriggered: { root.voiceSeconds++; if (root.voiceSeconds >= 300) root.stopVoice(); }
     }
     function deleteMessage(message, forMe, expectedKey) {
-        if (demo || writing || !selectedChat || selectedChat.key !== expectedKey) {
+        if (demo) return;
+        if (writing) { errorText = I18n.trFor("dankChat", "Wait until the current message has been sent."); return; }
+        if (!selectedChat || selectedChat.key !== expectedKey) {
             errorText = I18n.trFor("dankChat", "The selected chat changed. Select the message again."); return;
         }
         const chat = selectedChat;
@@ -575,16 +630,19 @@ PluginComponent {
             cacheMessages(chat.key, (messageCache[chat.key] || []).filter(row => row.id !== message.id));
             if (confirmedMessages[chat.key]) delete confirmedMessages[chat.key][message.id];
             if (selectedChat?.key === chat.key) messages = messages.filter(row => row.id !== message.id);
-            refresh();
+            refreshAccount(chat.provider, chat.account || "");
         })) writing = false;
     }
     function sendAttachments(paths, expectedKey, finished) {
-        if (!selectedChat || writing || demo || !paths.length || paths.length > 10 || selectedChat.key !== expectedKey) {
+        if (demo || !paths.length) { finished(0); return; }
+        if (paths.length > 10) { errorText = I18n.trFor("dankChat", "Choose up to 10 attachments."); finished(0); return; }
+        if (writing) { errorText = I18n.trFor("dankChat", "Wait until the current message has been sent."); finished(0); return; }
+        if (!selectedChat || selectedChat.key !== expectedKey) {
             errorText = I18n.trFor("dankChat", "The selected chat changed. Choose the attachment again.");
             finished(0); return;
         }
         const chat = selectedChat, text = draft, replyId = reply?.id || "";
-        writing = true; errorText = "";
+        writing = true; errorText = ""; interruptedWrite = false;
         let sent = 0;
         const stop = () => { writing = false; finished(sent); if (selectedChat?.key === chat.key) showLatest(); };
         const states = Object.assign({}, transferStates);
@@ -596,6 +654,7 @@ PluginComponent {
             if (!sendRequest(chat.provider, "file", {chat: chat, path: paths[sent], text: sent === 0 ? text : "", replyId: replyId}, result => {
                 if (!result.ok) {
                     transferState(chat.key + ":file:" + sent, "Not confirmed — check the conversation");
+                    setUnconfirmedAttachments(chat.key, (attachmentUnconfirmed[chat.key] || []).filter(path => path !== paths[sent]).concat([paths[sent]]));
                     paths.slice(sent + 1).forEach((path, i) => transferState(chat.key + ":file:" + (sent + i + 1), "Not sent"));
                     errorText = I18n.trFor("dankChat", "Attachment sending stopped. Check the chat before retrying.") + " (" + sent + "/" + paths.length + ") " + (result.error ? I18n.trFor("dankChat", result.error) : "");
                     stop(); return;
@@ -634,7 +693,8 @@ PluginComponent {
                 keys.forEach(key => { delete d[key]; delete r[key]; }); drafts = d; replies = r;
                 chats = chats.filter(chat => chat.provider !== provider || (chat.account || "") !== account);
                 if (selectedChat?.provider === provider && (selectedChat.account || "") === account) { selectedChat = null; messages = []; }
-                const states = Object.assign({}, statuses); states[provider] = {authorized: false}; statuses = states;
+                delete chatSignatures[identity];
+                if (!account) { const states = Object.assign({}, statuses); states[provider] = {authorized: false}; statuses = states; }
             }
             refresh();
         })) finish();
@@ -722,19 +782,30 @@ PluginComponent {
         })) finish();
     }
     property var markingRead: ({})
-    function markChatRead(chat, messageId) {
+    function markChatRead(chat, messageId, automatic) {
         if (demo || !chat || markingRead[chat.key]) return;
         markingRead = Object.assign({}, markingRead, {[chat.key]: true});
         const finish = () => {
             const active = Object.assign({}, markingRead);
             delete active[chat.key]; markingRead = active;
         };
+        const failed = error => {
+            if (!automatic) { errorText = I18n.trFor("dankChat", error); return; }
+            automaticReadFailures = Object.assign({}, automaticReadFailures, {[chat.key]: Date.now()});
+            readRetryTimer.restart();
+        };
         if (!sendRequest(chat.provider, "read", {chat: chat, messageId: messageId || ""}, result => {
             finish();
-            if (!result.ok) { errorText = I18n.trFor("dankChat", result.error); return; }
+            if (!result.ok) { failed(result.error); return; }
+            if (automatic) {
+                automaticReadAttempts = Object.assign({}, automaticReadAttempts, {[chat.key]: messageId});
+                const failures = Object.assign({}, automaticReadFailures); delete failures[chat.key]; automaticReadFailures = failures;
+            }
             chats = chats.map(row => row.key === chat.key ? Object.assign({}, row, {unread: 0, serverUnread: 0}) : row);
-            refresh();
-        })) finish();
+            refreshAccount(chat.provider, chat.account || "");
+            // Messages may have arrived while this read was running.
+            Qt.callLater(readVisibleChat);
+        })) { finish(); if (automatic) failed(""); }
     }
     function togglePin(chat) {
         if (demo) return;
@@ -795,7 +866,8 @@ PluginComponent {
             onRead: line => {
                 try {
                     const result = JSON.parse(line);
-                    if (result.event === "provider_changed") { root.providerChanged(result.provider); return; }
+                    if (result.event === "provider_changed") { root.providerChanged(result.provider, result.account, result.chat || ""); return; }
+                    if (result.event === "bridge_busy") { root.errorText = I18n.trFor("dankChat", "Another DankChat service is still running. Reconnect in a moment."); return; }
                     const entry = root.pending[result.requestId];
                     delete root.pending[result.requestId];
                     if (entry) {
@@ -820,10 +892,15 @@ PluginComponent {
     }
     Timer {
         interval: 1500; repeat: true
-        running: !root.demo && root.surfaceOpen && root.selectedChat?.provider === "whatsapp" && !root.accountBusy.whatsapp
+        running: !root.demo && root.surfaceOpen && root.selectedChat?.provider === "whatsapp" && !root.accountBusy[root.accountKey("whatsapp", root.selectedChat?.account || "")]
         onTriggered: root.loadMessages()
     }
-    Timer { interval: root.accountsOpen ? 2000 : root.surfaceOpen ? 5000 : 30000; running: !root.demo; repeat: true; onTriggered: root.refresh() }
+    // accountsOpen survives closing the window; only poll quickly while it is visible.
+    // Periodic conversation reloads recover from missed update events.
+    Timer {
+        interval: root.surfaceOpen ? (root.accountsOpen ? 2000 : 5000) : 30000; running: !root.demo; repeat: true
+        onTriggered: { root.refresh(); if (root.surfaceOpen && !root.accountsOpen && !root.settingsOpen) root.loadMessages(); }
+    }
     DankPopout {
         id: popout
         popupWidth: 760

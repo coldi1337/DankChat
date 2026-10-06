@@ -9,7 +9,8 @@ Controls.ScrollView {
     required property var service
     signal exportRequested()
     clip: true
-    onVisibleChanged: if (visible && typeof service.storageAction === "function") service.storageAction(false, false)
+    property bool confirmClean: false
+    onVisibleChanged: { confirmClean = false; if (visible && typeof service.storageAction === "function") service.storageAction(false, false); }
     component Label: StyledText { textFormat: Text.PlainText; color: Theme.surfaceText; wrapMode: Text.Wrap; Layout.fillWidth: true }
     component Toggle: RowLayout {
         property string text
@@ -75,7 +76,18 @@ Controls.ScrollView {
             onClicked: { const values = [7, 14, 30, 90, 365]; root.service.savePreference("cacheDays", values[(values.indexOf(root.service.cacheDays) + 1) % values.length]); }
         }
         Label { text: I18n.trFor("dankChat", "Cleanup keeps media in the open conversation and never removes original files or account data."); color: Theme.surfaceVariantText }
-        DankButton { Layout.fillWidth: true; text: I18n.trFor("dankChat", "Clean downloaded media"); enabled: !root.service.storageBusy && !root.service.writing && Object.keys(root.service.downloads || {}).length === 0; onClicked: root.service.storageAction(true, true) }
+        DankButton { Layout.fillWidth: true; visible: !root.confirmClean; text: I18n.trFor("dankChat", "Clean downloaded media"); enabled: !root.service.storageBusy && !root.service.writing && Object.keys(root.service.downloads || {}).length === 0; onClicked: root.confirmClean = true }
+        ColumnLayout {
+            objectName: "cleanMediaConfirmation"
+            visible: root.confirmClean
+            Layout.fillWidth: true
+            Label { text: I18n.trFor("dankChat", "Remove all downloaded media except the open conversation? Received files can be downloaded again while the services still provide them.") }
+            RowLayout {
+                Layout.fillWidth: true
+                DankButton { Layout.fillWidth: true; text: I18n.trFor("dankChat", "Cancel"); onClicked: root.confirmClean = false }
+                DankButton { Layout.fillWidth: true; text: I18n.trFor("dankChat", "Remove media"); enabled: !root.service.storageBusy && !root.service.writing && Object.keys(root.service.downloads || {}).length === 0; onClicked: { root.confirmClean = false; root.service.storageAction(true, true); } }
+            }
+        }
         Label { text: I18n.trFor("dankChat", "Version and updates"); font.weight: Font.Medium }
         Label { objectName: "installedVersion"; text: "DankChat " + (root.service.appInfo?.version ? "v" + root.service.appInfo.version : "…") }
         Label { visible: !!root.service.appInfo?.development; text: I18n.trFor("dankChat", "Local development changes") + " · " + (root.service.appInfo?.revision || ""); color: Theme.surfaceVariantText }

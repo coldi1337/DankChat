@@ -2,4 +2,4 @@
 set -eu
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 python3 -m venv "$project_dir/.venv"
-"$project_dir/.venv/bin/python3" -m pip install -r "$project_dir/backend/requirements.txt"
+"$project_dir/.venv/bin/python3" -m pip install --require-hashes -r "$project_dir/backend/requirements.txt"

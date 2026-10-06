@@ -11,6 +11,7 @@ room. Built with native QML widgets, without Electron or an embedded browser.
 - Multiple Telegram and WhatsApp accounts, with named account buttons, pinned chats and an unread filter.
 - Search messages and browse each chat’s images, videos, files, audio and links.
 - Replies, emoji reactions, editing and message deletion, including “for everyone” where supported.
+- Date separators in conversations and last-activity times in the chat list.
 - Paste screenshots, select multiple attachments and save received media.
 - View images with zoom, watch videos and listen to voice messages with seeking
   and playback speed controls.
@@ -47,10 +48,10 @@ Enable DankChat, add its bar widget, then open **Accounts** to link your account
 For a Git checkout, clone this repository and run the same setup command from it;
 the installer links that folder into DMS, so keep it in place.
 
-**Updating from 0.4:** update the plugin through DMS, rerun `python3 scripts/setup`
+**Updating:** update the plugin through DMS, rerun `python3 scripts/setup`
 and restart DMS when convenient. Existing accounts and settings are retained;
-unsent drafts are kept only in memory. See the [changelog](CHANGELOG.md) for
-what changed in 0.5.0.
+unsent drafts are kept only in memory. Setup now checks the pinned dependency
+hashes. See the [changelog](CHANGELOG.md) for release details.
 
 DankChat uses the public `DankPopout` component, including on DMS Git builds
 that no longer export `DankPopoutStandalone`. If an older DankChat version
@@ -68,6 +69,7 @@ into the app window, keeping your draft.
 Right-click a chat to pin it or mark it as read. Use the message actions to
 reply, react, edit or delete. The magnifier and gallery icons in the chat header
 open message search and media browsing. **Enter** sends; **Shift+Enter** adds a line break.
+**Up** in an empty composer edits your last text message; **Escape** cancels a reply.
 The microphone button starts a recording, with a preview before sending.
 
 Use the gear for **Settings**, or **Accounts** to name each account and choose
@@ -96,6 +98,12 @@ Notifications start disabled and can be configured per account and chat.
 Attachments are sent individually, up to 10 at a time. Voice recordings stop
 after five minutes or when you close the chat; switching chats discards the
 recording. If a send fails, check the conversation before trying again.
+Unconfirmed attachments stay in the draft and require **Send again** before
+they can be included in another batch.
+
+A dedicated Telegram application ID remains an open issue. This release still
+uses the inherited Telegram Desktop application credentials by default; it does
+not resolve the application-identity finding from the review.
 
 ## More details
 

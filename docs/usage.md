@@ -13,7 +13,8 @@ sync starts after linking and stops when WhatsApp or DankChat is disabled.
 Rerun `python3 scripts/setup` after upgrading from a single-account
 version to install the additional-account unit template.
 
-Telegram uses the upstream public application credentials. To use your own,
+Telegram currently defaults to the inherited Telegram Desktop application
+credentials; a dedicated DankChat application ID is still pending. To use your own,
 set `api_id` and `api_hash` in `$XDG_CONFIG_HOME/dankchat/telegram/config.json`.
 
 Choose **Add another account** and a name, then link it by QR. Names appear in
@@ -32,8 +33,8 @@ mirror; Telegram searches server history. Right-click your own message text to
 edit it; service time limits and permissions apply.
 
 Read synchronization can be enabled per account. DankChat marks messages read
-when the latest conversation is visible, not while browsing search results,
-settings or older history. Reads from other devices are picked up on refresh
+when the latest conversation is visible in the dropdown or the active app window,
+not while browsing search results, settings or older history. Reads from other devices are picked up on refresh
 (Telegram also emits immediate read events). Synchronization needs a connection;
 it is not an instantaneous cross-device guarantee.
 
@@ -45,8 +46,8 @@ Only new activity observed after startup creates notifications, avoiding a burst
 for previously unread chats. Delivery uses the desktop notification service.
 
 `Ctrl+K` focuses chat search, `Ctrl+F` opens message search, `Alt+Up/Down` changes
-chat, `Ctrl+R` replies to the latest loaded message, and Escape closes the current
-view. The dropdown's focus-loss behavior is configurable; clicking outside still
+chat, `Ctrl+R` replies to the latest loaded message, Up in an empty composer edits
+your last message, and Escape cancels a reply or closes the current view. The dropdown's focus-loss behavior is configurable; clicking outside still
 closes it.
 
 The installed version and local Git changes are shown under **Version and updates**.
@@ -99,6 +100,7 @@ to another chat or reloading DankChat discards it.
 | Telegram session and configuration | `$XDG_CONFIG_HOME/dankchat/telegram` |
 | Telegram media cache | `$XDG_CACHE_HOME/dankchat/telegram` |
 | WhatsApp session and helper data | `$XDG_STATE_HOME/dankchat/whatsapp` |
+| Previews of sent attachments | `$XDG_CACHE_HOME/dankchat/sent` |
 | Temporary recordings, clipboard images and runtime lock | `$XDG_RUNTIME_DIR/dankchat` |
 
 Standard XDG defaults apply. DMS plugin settings are separate from account sessions.
@@ -147,6 +149,24 @@ underlying store/network can still serialize operations.
 
 Each confirmed attachment is shown immediately with a private local preview,
 without waiting for the whole batch or downloading the upload again. These copies
-are bounded to 128 confirmed messages and 256 MB per account, live under the
-runtime directory, and are removed when the provider closes. No message is shown
-as sent before the provider confirms it.
+are bounded to 128 confirmed messages and 256 MB across all accounts, live in the
+cache directory, and are removed when the provider closes or DankChat restarts.
+No message is shown as sent before the provider confirms it. If an upload is not
+confirmed, the file stays in the attachment draft but is only sent again after you
+choose **Send again** for it.
+
+Received documents (including SVG), rather than ordinary images, videos and
+audio, require confirmation before opening in their default application.
+
+## Updates and background activity
+
+Telegram and WhatsApp updates refresh only the affected account; bursts are
+bundled (about one second with DankChat open, ten seconds in the background).
+The Telegram chat list and open conversation are cached until an update or your
+own action changes them; the chat list is fully refetched at least every five
+minutes during regular polling, and the open conversation's cache expires after
+30 seconds. Failed chat-list fetches wait at least 15 seconds before retrying;
+longer Telegram flood-wait responses are respected. WhatsApp health checks are cached
+for a minute. While the Accounts view is visible, accounts refresh every two
+seconds; otherwise every five seconds with DankChat open and every 30 seconds in
+the background.

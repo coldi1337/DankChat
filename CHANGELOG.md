@@ -1,5 +1,74 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Refresh only the account (and chat) that reported an update instead of every
+  account of the service, and bundle bursts of updates from busy groups.
+- Serve the Telegram chat list from cache until an update or a write changes it,
+  refetching at most every 3 seconds and at least every 5 minutes. Refresh
+  failures are now shown instead of silently keeping an outdated list.
+- Back off after Telegram refresh failures and respect reported flood waits.
+  Concurrent writes and cancelled fetches no longer leave the chat cache clean
+  when another refresh is still needed.
+- Stop the 2-second account refresh once the window is closed while the account
+  view was open.
+- Chats beyond the 40 most recent no longer fail with “Select an existing
+  Telegram chat first” for a few seconds after sending or deleting.
+- Retry automatic read synchronization when a read is still running or fails, so
+  messages arriving meanwhile are also marked read on other devices.
+- A failed edit request while reconnecting no longer blocks sending until DMS restarts.
+- Cache WhatsApp health checks instead of starting `wacli doctor` and `systemctl`
+  on every refresh.
+- Logging out an additional account no longer shows the original account as
+  disconnected; the reconnect notice clears after the next action.
+- Show accurate errors when sending is busy or more than 10 attachments are chosen.
+- An expired WhatsApp QR login is reported as expired on Python 3.10.
+- Add missing German translations for service errors and the new controls.
+
+### Improved
+
+- Day headings (“Today”, “Yesterday”, date) in conversations and the time of the
+  latest activity in the chat list.
+- Telegram conversations reload from a local cache that update events clear,
+  instead of fetching the history from Telegram every five seconds. Reactions by
+  others and read receipts of sent messages update through events.
+- Press Up in an empty composer to edit your last message; Escape cancels a reply.
+- Add missing tooltips and accessible names to chat action buttons.
+- Cleanup removes abandoned partial-download directories older than an hour.
+
+### Security and reliability
+
+- Automatic read synchronization in the app window requires the window to be active.
+- Ask before opening received documents, including SVG images, externally.
+- An attachment whose upload was not confirmed is kept but excluded from the next
+  send until it is explicitly included again.
+- WhatsApp writes that outlive a request timeout keep sync paused until they finish
+  and refresh the conversation when they complete.
+- Wait for outstanding WhatsApp writes before logout, shutdown or clearing shared
+  temporary files; cancelled writes still waiting their turn are never sent later.
+- Previews of sent attachments are stored in the cache directory instead of the
+  memory-backed runtime directory, with one shared 256 MB limit for all accounts.
+- The receipt webhook only accepts connections from the same user, handles them
+  concurrently and times out idle connections.
+- Setup verifies wacli against checksums pinned in the repository and installs
+  Python dependencies with `--require-hashes`.
+- A restarted service waits for its predecessor instead of exiting silently.
+- Ask before removing downloaded media.
+
+### Removed
+
+- The unused `link-whatsapp` and `open-link-terminal` scripts, which required wacli 0.17.1.
+
+### Known limitations
+
+- A dedicated Telegram application ID and shared custom credentials for additional
+  accounts are deferred. The inherited Telegram Desktop API credentials remain
+  the default in this release.
+- CPU, battery and network savings have not been measured. Media players are
+  still created when their message delegates load.
+
 ## 0.5.1 — 2026-09-28
 
 ### Fixed

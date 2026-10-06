@@ -49,7 +49,7 @@ class WhatsAppLogin:
                 self.state = "failed"
         except asyncio.CancelledError:
             raise
-        except TimeoutError:
+        except asyncio.TimeoutError:
             self.state = "expired"
         except Exception:
             self.state = "failed"

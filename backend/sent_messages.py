@@ -7,25 +7,43 @@ import shutil
 import tempfile
 import time
 import threading
+import weakref
 from functools import wraps
+
+# Every account keeps its own entries, but the preview copies share one budget:
+# a limit per account would multiply with each added account.
+MAX_ENTRIES = 128
+MAX_BYTES = 256 * 1024 * 1024
+LOCK = threading.RLock()
+INSTANCES = weakref.WeakSet()
+
 
 def synchronized(fn):
     @wraps(fn)
     def wrapped(self, *args, **kwargs):
-        with self.lock:
+        with LOCK:
             return fn(self, *args, **kwargs)
     return wrapped
+
+
+def preview_size(row):
+    path = row['mediaPath']
+    try:
+        return Path(path).stat().st_size if path else 0
+    except OSError:
+        return 0
 
 
 from model import message
 
 
 class SentMessages:
-    def __init__(self, runtime):
-        self.runtime = runtime
-        self.lock = threading.RLock()
+    def __init__(self, root):
+        self.root = Path(root)
+        self.lock = LOCK
         self.directory = None
         self.entries = OrderedDict()
+        INSTANCES.add(self)
 
     @synchronized
     def remember(self, provider, target, result, request):
@@ -43,8 +61,8 @@ class SentMessages:
             # Preview caching must never turn a confirmed send into a failure.
             try:
                 if self.directory is None:
-                    self.runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
-                    self.directory = tempfile.TemporaryDirectory(prefix='sent-', dir=self.runtime)
+                    self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+                    self.directory = tempfile.TemporaryDirectory(prefix='sent-', dir=self.root)
                 with tempfile.NamedTemporaryFile(dir=self.directory.name, suffix=Path(path).suffix, delete=False) as output:
                     preview = output.name
                     with open(path, 'rb') as source:
@@ -60,14 +78,27 @@ class SentMessages:
             'media_path': preview, 'local_path': preview,
             'reply_to_msg_id': request.get('replyId', ''), 'quoted_id': request.get('replyId', '')})
         self.entries[key] = (row, now)
-        # Bound both memory and private disk copies; keep the newest result.
-        def size():
-            return sum(Path(r['mediaPath']).stat().st_size for r, _ in self.entries.values() if r['mediaPath'] and Path(r['mediaPath']).is_file())
-        while len(self.entries) > 128 or (len(self.entries) > 1 and size() > 256 * 1024 * 1024):
-            _, (old, _) = self.entries.popitem(last=False)
+        self.entries.move_to_end(key)
+        self._evict(row)
+        return row
+
+    @staticmethod
+    def _evict(newest):
+        """Bound memory and private disk copies across all accounts; keep the newest result."""
+        while True:
+            owners = [cache for cache in list(INSTANCES) if cache.entries]
+            count = sum(len(cache.entries) for cache in owners)
+            size = sum(preview_size(row) for cache in owners for row, _ in cache.entries.values())
+            if count <= MAX_ENTRIES and size <= MAX_BYTES:
+                return
+            candidates = [(next(iter(cache.entries.values()))[1], cache) for cache in owners
+                          if next(iter(cache.entries.values()))[0] is not newest]
+            if not candidates:
+                return
+            _, cache = min(candidates, key=lambda item: item[0])
+            _, (old, _) = cache.entries.popitem(last=False)
             if old['mediaPath']:
                 Path(old['mediaPath']).unlink(missing_ok=True)
-        return row
 
     @synchronized
     def merge(self, target, rows, include_pending=True):

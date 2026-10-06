@@ -742,5 +742,119 @@
   },
   "No compatible file picker is available. Update DMS and run python3 scripts/check-environment.": {
     "No compatible file picker is available. Update DMS and run python3 scripts/check-environment.": "Kein kompatibler Dateidialog verfügbar. Aktualisiere DMS und führe python3 scripts/check-environment aus."
+  },
+  "Choose a valid destination for the downloaded media.": {
+    "Choose a valid destination for the downloaded media.": "Wähle einen gültigen Speicherort für die heruntergeladenen Medien."
+  },
+  "Enter a message of up to 4096 characters.": {
+    "Enter a message of up to 4096 characters.": "Gib eine Nachricht mit bis zu 4096 Zeichen ein."
+  },
+  "Invalid clipboard attachments.": {
+    "Invalid clipboard attachments.": "Ungültige Anhänge aus der Zwischenablage."
+  },
+  "Invalid pin state.": {
+    "Invalid pin state.": "Ungültiger Anheftstatus."
+  },
+  "Invalid request.": {
+    "Invalid request.": "Ungültige Anfrage."
+  },
+  "Invalid JSON request.": {
+    "Invalid JSON request.": "Ungültige JSON-Anfrage."
+  },
+  "Load the media before saving it.": {
+    "Load the media before saving it.": "Lade die Medien, bevor du sie speicherst."
+  },
+  "Request is too large.": {
+    "Request is too large.": "Die Anfrage ist zu groß."
+  },
+  "Select an existing Telegram chat first.": {
+    "Select an existing Telegram chat first.": "Wähle zuerst einen vorhandenen Telegram-Chat aus."
+  },
+  "Sign in to Telegram first.": {
+    "Sign in to Telegram first.": "Melde dich zuerst bei Telegram an."
+  },
+  "Telegram could not complete the action. Check the conversation before retrying.": {
+    "Telegram could not complete the action. Check the conversation before retrying.": "Telegram konnte die Aktion nicht abschließen. Prüfe die Unterhaltung, bevor du es erneut versuchst."
+  },
+  "Telegram sign-out failed. Your local session was preserved.": {
+    "Telegram sign-out failed. Your local session was preserved.": "Die Abmeldung bei Telegram ist fehlgeschlagen. Deine lokale Sitzung bleibt erhalten."
+  },
+  "The attachment could not be downloaded.": {
+    "The attachment could not be downloaded.": "Der Anhang konnte nicht heruntergeladen werden."
+  },
+  "The chat does not belong to this service.": {
+    "The chat does not belong to this service.": "Der Chat gehört nicht zu diesem Dienst."
+  },
+  "This message has no downloadable attachment.": {
+    "This message has no downloadable attachment.": "Diese Nachricht hat keinen herunterladbaren Anhang."
+  },
+  "Unsupported Telegram action.": {
+    "Unsupported Telegram action.": "Nicht unterstützte Telegram-Aktion."
+  },
+  "Unsupported WhatsApp action.": {
+    "Unsupported WhatsApp action.": "Nicht unterstützte WhatsApp-Aktion."
+  },
+  "Unsupported action.": {
+    "Unsupported action.": "Nicht unterstützte Aktion."
+  },
+  "WhatsApp could not complete the action. Check the conversation before retrying.": {
+    "WhatsApp could not complete the action. Check the conversation before retrying.": "WhatsApp konnte die Aktion nicht abschließen. Prüfe die Unterhaltung, bevor du es erneut versuchst."
+  },
+  "WhatsApp sign-out failed. Your local session was preserved; check your connection.": {
+    "WhatsApp sign-out failed. Your local session was preserved; check your connection.": "Die Abmeldung bei WhatsApp ist fehlgeschlagen. Deine lokale Sitzung bleibt erhalten; prüfe deine Verbindung."
+  },
+  "The service could not complete this request. Check the connection; do not resend without checking the conversation.": {
+    "The service could not complete this request. Check the connection; do not resend without checking the conversation.": "Der Dienst konnte die Anfrage nicht abschließen. Prüfe die Verbindung und sende erst erneut, nachdem du die Unterhaltung geprüft hast."
+  },
+  "Telegram chats could not be refreshed. Check the connection and try again.": {
+    "Telegram chats could not be refreshed. Check the connection and try again.": "Die Telegram-Chats konnten nicht aktualisiert werden. Prüfe die Verbindung und versuche es erneut."
+  },
+  "Another DankChat service is still running. Reconnect in a moment.": {
+    "Another DankChat service is still running. Reconnect in a moment.": "Ein anderer DankChat-Dienst läuft noch. Verbinde dich gleich erneut."
+  },
+  "Wait until the current message has been sent.": {
+    "Wait until the current message has been sent.": "Warte, bis die aktuelle Nachricht gesendet wurde."
+  },
+  "Open this file?": {
+    "Open this file?": "Diese Datei öffnen?"
+  },
+  "It opens in its default application. Only open files you trust; received files can contain harmful content.": {
+    "It opens in its default application. Only open files you trust; received files can contain harmful content.": "Sie wird mit der Standardanwendung geöffnet. Öffne nur Dateien, denen du vertraust; empfangene Dateien können schädliche Inhalte enthalten."
+  },
+  "Open": {
+    "Open": "Öffnen"
+  },
+  "Remove": {
+    "Remove": "Entfernen"
+  },
+  "Upload not confirmed. Check the conversation; send it again only if it is missing.": {
+    "Upload not confirmed. Check the conversation; send it again only if it is missing.": "Upload nicht bestätigt. Prüfe die Unterhaltung und sende die Datei nur erneut, wenn sie fehlt."
+  },
+  "Send again": {
+    "Send again": "Erneut senden"
+  },
+  "Remove all downloaded media except the open conversation? Received files can be downloaded again while the services still provide them.": {
+    "Remove all downloaded media except the open conversation? Received files can be downloaded again while the services still provide them.": "Alle heruntergeladenen Medien außer denen der offenen Unterhaltung entfernen? Empfangene Dateien lassen sich erneut laden, solange die Dienste sie bereitstellen."
+  },
+  "Remove media": {
+    "Remove media": "Medien entfernen"
+  },
+  "Today": {
+    "Today": "Heute"
+  },
+  "Yesterday": {
+    "Yesterday": "Gestern"
+  },
+  "Back to chats": {
+    "Back to chats": "Zurück zu den Chats"
+  },
+  "Zoom out": {
+    "Zoom out": "Verkleinern"
+  },
+  "Zoom in": {
+    "Zoom in": "Vergrößern"
+  },
+  "Fit to window": {
+    "Fit to window": "An Fenster anpassen"
   }
 }

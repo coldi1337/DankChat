@@ -304,7 +304,9 @@ ShellRoot {
             if (root.step === 12 || root.step === 32) {
                 const picker = view.item.attachmentPicker;
                 if (Quickshell.env("DANKCHAT_TEST_MISSING_PICKER") === "1") {
-                    if (view.status !== Loader.Ready || !mock.errorText || !mock.errorText.includes("file picker")) return "FAIL missing picker blanked chat or hid error";
+                    // The error is shown in the UI language, so compare with its translation.
+                    const pickerError = I18n.trFor("dankChat", "No compatible file picker is available. Update DMS and run python3 scripts/check-environment.");
+                    if (view.status !== Loader.Ready || mock.errorText !== pickerError) return "FAIL missing picker blanked chat or hid error " + JSON.stringify({status: view.status, error: mock.errorText});
                     return "PASS missing picker keeps chat loaded and reports error";
                 }
                 if (!picker || picker.status !== Loader.Ready || picker.loadError) return "FAIL file picker did not load: " + JSON.stringify({exists: !!picker, status: picker?.status, error: picker?.loadError, implementation: picker?.implementation, details: picker?.componentErrors});
@@ -498,7 +500,22 @@ ShellRoot {
                 else nativePicker.fileSelected("file:///tmp/synthetic-diagnostics.json");
                 if (mock.savedFiles.length !== 2 || mock.savedFiles[1].kind !== "diagnostics" || view.item.savingDiagnostics) return "FAIL picker diagnostic export";
             }
-            return root.step === 150 ? "PASS accounts, settings, search, resize, picker selection/save/cancel" : "STEP " + root.step;
+            if (root.step === 149) {
+                const now = new Date(), yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 12);
+                if (view.item.dayLabel(view.item.dayKey(now.getTime() / 1000)) !== I18n.trFor("dankChat", "Today")) return "FAIL today heading translation";
+                if (view.item.chatTime(yesterday.getTime() / 1000) !== I18n.trFor("dankChat", "Yesterday")) return "FAIL yesterday chat time translation";
+                if (view.item.dayKey(0) !== "") return "FAIL missing timestamp produced date heading";
+                if (view.item.isMediaFile({mimeType: "image/svg+xml"}) || view.item.isMediaFile({mimeType: "image/png", filename: "received.svg"})) return "FAIL SVG bypassed external-open confirmation";
+                if (!view.item.isMediaFile({mimeType: "image/png"}) || !view.item.isMediaFile({mimeType: "audio/ogg"})) return "FAIL regular media requires unexpected confirmation";
+                mock.settingsOpen = false; mock.browseMode = ""; mock.accountsOpen = false;
+                mock.messages = [{id: "dated", text: "Synthetic dated message", timestamp: now.getTime() / 1000, out: false, mediaType: "", mediaPath: "", time: "12:00"}];
+            }
+            if (root.step === 150) {
+                const heading = root.findItem(view.item, "dayHeading");
+                if (!heading || heading.text !== I18n.trFor("dankChat", "Today")) return "FAIL date section was not rendered";
+                view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/review-dates-" + (root.english ? "en" : "de") + ".png"));
+            }
+            return root.step === 151 ? "PASS accounts, settings, search, resize, picker selection/save/cancel, dates and external media" : "STEP " + root.step;
 
         }
     }

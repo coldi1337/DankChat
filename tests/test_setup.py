@@ -42,6 +42,10 @@ class SetupTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'checksum'):
             setup.verified_binary(archive, checksums, 'other.tar.gz')
 
+    def test_pinned_checksums_cover_supported_architectures(self):
+        for arch in ('amd64', 'arm64'):
+            self.assertRegex(setup.WACLI_SHA256[f'wacli_{setup.WACLI_VERSION}_linux_{arch}.tar.gz'], r'^[0-9a-f]{64}$')
+
     def test_archive_symlink_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'archive contents'):
             setup.verified_binary(*release(symlink=True))
@@ -51,7 +55,7 @@ class SetupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / 'wacli'
             destination.write_bytes(b'old binary')
-            with patch.object(setup.platform, 'machine', return_value='x86_64'), patch.object(setup.platform, 'system', return_value='Linux'), patch.object(setup, 'download', side_effect=[archive, checksums.encode()]), patch.object(setup, 'check', AsyncMock(side_effect=ValueError('incompatible'))):
+            with patch.object(setup.platform, 'machine', return_value='x86_64'), patch.object(setup.platform, 'system', return_value='Linux'), patch.object(setup, 'download', return_value=archive), patch.dict(setup.WACLI_SHA256, {'wacli_0.19.0_linux_amd64.tar.gz': checksums.split()[0]}), patch.object(setup, 'check', AsyncMock(side_effect=ValueError('incompatible'))):
                 with self.assertRaisesRegex(ValueError, 'incompatible'):
                     setup.install_wacli(destination)
             self.assertEqual(destination.read_bytes(), b'old binary')
@@ -62,7 +66,7 @@ class SetupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / 'wacli'
             destination.write_bytes(b'old binary')
-            with patch.object(setup.platform, 'machine', return_value='x86_64'), patch.object(setup.platform, 'system', return_value='Linux'), patch.object(setup, 'download', side_effect=[archive, checksums.encode()]), patch.object(setup, 'check', AsyncMock(return_value='wacli 0.19.0')):
+            with patch.object(setup.platform, 'machine', return_value='x86_64'), patch.object(setup.platform, 'system', return_value='Linux'), patch.object(setup, 'download', return_value=archive), patch.dict(setup.WACLI_SHA256, {'wacli_0.19.0_linux_amd64.tar.gz': checksums.split()[0]}), patch.object(setup, 'check', AsyncMock(return_value='wacli 0.19.0')):
                 setup.install_wacli(destination)
             self.assertEqual(destination.read_bytes(), b'fixture binary')
             self.assertTrue(destination.stat().st_mode & 0o100)

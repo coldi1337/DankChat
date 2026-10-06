@@ -14,6 +14,65 @@ ShellRoot {
     property var readCalls: []
     property int attachmentsSent: -1
     property string recoveryChatKey: ""
+    function reviewStateRegressions(chat) {
+        const send = chat.sendRequest, refresh = chat.refreshAccount;
+        const original = {};
+        const fields = ["selectedChat", "messages", "readingLatest", "historyContext", "loadingMessages", "settingsOpen", "accountsOpen", "pluginData", "chats", "automaticReadAttempts", "automaticReadFailures", "markingRead", "writing", "errorText", "chatSignatures", "statuses", "accountStatuses"];
+        fields.forEach(key => original[key] = chat[key]);
+        try {
+            const target = chat.chats.find(row => row.provider === "telegram" && !row.account);
+            chat.selectedChat = target;
+            chat.pluginData = Object.assign({}, chat.pluginData, {telegramReadReceipts: true});
+            chat.settingsOpen = false; chat.accountsOpen = false; chat.historyContext = false;
+            chat.loadingMessages = false; chat.readingLatest = true;
+            chat.automaticReadAttempts = {}; chat.automaticReadFailures = {}; chat.markingRead = {};
+            chat.messages = [{id: "100", out: false}];
+            const calls = [];
+            chat.sendRequest = (provider, action, payload, callback) => { calls.push({action: action, payload: payload, callback: callback}); return true; };
+            chat.refreshAccount = () => {};
+            chat.readVisibleChat();
+            chat.messages = [{id: "101", out: false}];
+            chat.readVisibleChat();
+            if (calls.length !== 1 || chat.automaticReadAttempts[target.key]) return "FAIL overlapping read was prematurely acknowledged";
+            calls[0].callback({ok: true});
+            chat.readVisibleChat();
+            if (calls.length !== 2 || calls[1].payload.messageId !== "101") return "FAIL newer message was not read after pending read";
+            calls[1].callback({ok: false, error: "Synthetic read failure"});
+            chat.readVisibleChat();
+            if (calls.length !== 2 || chat.errorText) return "FAIL automatic read retry ignored backoff";
+            chat.automaticReadFailures = {[target.key]: Date.now() - 16000};
+            chat.readVisibleChat();
+            if (calls.length !== 3) return "FAIL failed automatic read was forgotten";
+            calls[2].callback({ok: true});
+            chat.readingLatest = false;
+            chat.sendRequest = () => false;
+            chat.editMessage({id: "101", out: true}, "edited", target);
+            if (chat.writing) return "FAIL rejected edit locked composer";
+
+            // An unchanged response must repopulate a logged-out/relinked account,
+            // and read-sync preferences must invalidate the list comparison.
+            chat.refreshAccount = refresh;
+            let authorized = true;
+            const row = Object.assign({}, target, {unread: 0, serverUnread: 3});
+            chat.sendRequest = (provider, action, payload, callback) => {
+                callback(action === "status" ? {ok: true, authorized: authorized} : {ok: true, chats: [row]});
+                return true;
+            };
+            chat.selectedChat = null; chat.chatSignatures = {};
+            chat.refreshAccount("telegram", "");
+            if (chat.chats.find(c => c.key === target.key)?.unread !== 3) return "FAIL read sync did not select server unread";
+            authorized = false; chat.refreshAccount("telegram", "");
+            authorized = true; chat.refreshAccount("telegram", "");
+            if (!chat.chats.some(c => c.key === target.key)) return "FAIL relink left unchanged chats hidden";
+            chat.pluginData = Object.assign({}, chat.pluginData, {telegramReadReceipts: false});
+            chat.refreshAccount("telegram", "");
+            if (chat.chats.find(c => c.key === target.key)?.unread !== 0) return "FAIL read sync setting retained old unread count";
+            return "";
+        } finally {
+            chat.sendRequest = send; chat.refreshAccount = refresh;
+            fields.forEach(key => chat[key] = original[key]);
+        }
+    }
     Component.onCompleted: { DC.Style.theme = Theme; DC.Style.settings = SettingsData; }
     Loader {
         id: service
@@ -172,6 +231,7 @@ ShellRoot {
                 chat.sendRequest("", "test_read_calls", {}, result => { if (result.calls.length !== root.readCalls.length) root.readCalls = ["unexpected"]; });
             }
             if (root.step === 288 && root.readCalls.includes("unexpected")) return "FAIL hidden chat marked read";
+            if (root.step === 289) { const failure = root.reviewStateRegressions(chat); if (failure) return failure; }
             return root.step === 290 ? (automaticMediaObserved ? "PASS service refresh, surfaces and automatic media" : "FAIL automatic media not loaded") : "STEP " + root.step;
         }
     }

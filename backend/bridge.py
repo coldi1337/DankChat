@@ -34,6 +34,17 @@ from receipts import apply as apply_receipts
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_REQUEST = 65536
+# A full Telegram dialog fetch is a network round trip; serve the cached list
+# until an update or a write invalidates it, and refetch at least this often.
+CHATS_MAX_AGE = 300
+# Update events clear the vendored message cache, so a periodic reload of the
+# open conversation is usually served locally. The lifetime bounds missed updates.
+MESSAGES_CACHE_TTL = 30
+CHATS_MIN_INTERVAL = 3
+CHATS_RETRY_INTERVAL = 15
+STATUS_TTL = 60
+STATUS_RETRY_TTL = 10
+READ_ONLY_ACTIONS = {"status", "chats", "messages", "context", "presence", "browse", "notify", "download", "export"}
 
 
 def xdg(name, fallback):
@@ -45,6 +56,8 @@ STATE = xdg("XDG_STATE_HOME", Path.home() / ".local/state") / "dankchat"
 CACHE = xdg("XDG_CACHE_HOME", Path.home() / ".cache") / "dankchat"
 CONFIG = xdg("XDG_CONFIG_HOME", Path.home() / ".config") / "dankchat"
 RUNTIME = xdg("XDG_RUNTIME_DIR", Path(f"/run/user/{os.getuid()}")) / "dankchat"
+# Previews of sent attachments live on disk, not in the memory-backed runtime directory.
+SENT = CACHE / "sent"
 
 
 def load_module(name, path):
@@ -89,11 +102,19 @@ class Telegram:
         self.qr = None
         self.auth_state = "disconnected"
         self.downloads = {}
-        self.sent = SentMessages(RUNTIME)
+        self.sent = SentMessages(SENT)
         self.connection_lock = asyncio.Lock()
-        self.on_update = lambda: None
+        self.on_update = lambda chat="": None
         self.activity = {}
         self.user_status = {}
+        # Chats returned by the last full fetch. Unlike the vendored client's
+        # dialog cache, background refreshes with a smaller limit never shrink it.
+        self.known_chats = set()
+        self.chats_result = None
+        self.chats_fetched = 0.0
+        self.chats_checked_at = 0.0
+        self.chats_retry_at = 0.0
+        self.dialogs_dirty = True
 
     async def connect(self):
         async with self.connection_lock:
@@ -115,6 +136,7 @@ class Telegram:
         module = load_module("dankchat_telegram_" + self.account, ROOT / "vendor/telegram/telegram_client.py")
         daemon = module.TelegramBackend()
         daemon.automatic_media_downloads = False
+        daemon.messages_cache_ttl = MESSAGES_CACHE_TTL
         try:
             await daemon.client.connect()
         except Exception:
@@ -129,7 +151,26 @@ class Telegram:
         @daemon.client.on(telethon.events.MessageRead(inbox=False))
         async def invalidate(event):
             daemon.messages_cache.clear()
-            self.on_update()
+            self.dialogs_dirty = True
+            chat_id = getattr(event, "chat_id", None)
+            if getattr(event, "outbox", False) and getattr(event, "max_id", None):
+                # Read receipts for sent messages: update them before the conversation
+                # reloads, rather than waiting for the next chat-list fetch.
+                for row in daemon.dialogs_cache:
+                    if row.get("id") == chat_id:
+                        row["read_outbox_max_id"] = max(row.get("read_outbox_max_id", 0) or 0, event.max_id)
+            self.on_update("" if chat_id is None else str(chat_id))
+
+        raw = getattr(telethon.events, "Raw", None)
+        if raw is not None:
+            from telethon.tl.types import UpdateMessageReactions
+            from telethon.utils import get_peer_id
+
+            # Reactions by others arrive as raw updates without a message event.
+            @daemon.client.on(raw(types=[UpdateMessageReactions]))
+            async def reactions(update):
+                daemon.messages_cache.clear()
+                self.on_update(str(get_peer_id(update.peer)))
 
         @daemon.client.on(telethon.events.UserUpdate)
         async def presence_update(event):
@@ -156,6 +197,15 @@ class Telegram:
                 "qrPath": self.qr.path if self.qr else ""}
 
     async def call(self, action, data):
+        try:
+            return await self._call(action, data)
+        finally:
+            # A parallel chat fetch may finish during a write. Invalidate after
+            # completion as well, including uncertain/partially completed writes.
+            if action not in READ_ONLY_ACTIONS:
+                self.dialogs_dirty = True
+
+    async def _call(self, action, data):
         await self.connect()
         client = self.daemon.client
         if action == "logout":
@@ -171,6 +221,7 @@ class Telegram:
             self.auth_state = "disconnected"
             self.downloads.clear()
             self.activity.clear(); self.user_status.clear()
+            self.known_chats = set(); self.chats_result = None; self.chats_retry_at = 0.0
             shutil.rmtree(self.cache / "media", ignore_errors=True)
             return {"ok": True}
         if action == "cancel_login":
@@ -200,14 +251,34 @@ class Telegram:
         if not await client.is_user_authorized():
             raise ProviderError("Sign in to Telegram first.")
         if action == "chats":
-            result = await self.daemon.execute_command({"action": "dialogs", "limit": 200})
-            self.daemon.messages_cache.clear()
-            return {"ok": True, "chats": [chat("telegram", c) for c in result["chats"]]}
+            now = time.monotonic()
+            if now < self.chats_retry_at:
+                raise ProviderError("Telegram chats could not be refreshed. Check the connection and try again.")
+            stale = self.chats_result is None or now - self.chats_fetched >= CHATS_MAX_AGE
+            if stale or (self.dialogs_dirty and now - self.chats_fetched >= CHATS_MIN_INTERVAL):
+                # Clear first: an update arriving during the fetch marks it dirty again.
+                self.dialogs_dirty = False
+                try:
+                    rows = await self.daemon.refresh_dialogs_cache(200, raise_errors=True)
+                except asyncio.CancelledError:
+                    self.dialogs_dirty = True
+                    raise
+                except Exception as exc:
+                    self.dialogs_dirty = True
+                    delay = getattr(exc, "seconds", CHATS_RETRY_INTERVAL)
+                    delay = delay if isinstance(delay, (int, float)) else CHATS_RETRY_INTERVAL
+                    self.chats_retry_at = time.monotonic() + max(CHATS_RETRY_INTERVAL, delay)
+                    raise ProviderError("Telegram chats could not be refreshed. Check the connection and try again.") from exc
+                self.chats_result = [chat("telegram", c) for c in rows]
+                self.known_chats = {row["id"] for row in self.chats_result}
+                self.chats_fetched = time.monotonic()
+                self.chats_checked_at = time.time()
+            return {"ok": True, "checkedAt": self.chats_checked_at, "chats": [dict(row) for row in self.chats_result]}
         target = data.get("chat", {})
         if action in {"messages", "send", "read", "voice", "file", "download", "pin", "context", "reaction", "presence", "delete", "browse", "edit", "notify"}:
             # Resolve only exact dialogs returned by this account, never a guessed recipient.
             ident = str(target.get("id", ""))
-            if not any(str(c["id"]) == ident for c in self.daemon.dialogs_cache):
+            if ident not in self.known_chats and not any(str(c["id"]) == ident for c in self.daemon.dialogs_cache):
                 raise ProviderError("Select an existing Telegram chat first.")
             if action == "notify":
                 rows = await client.get_messages(int(ident), limit=20)
@@ -249,7 +320,6 @@ class Telegram:
                 self.daemon.chat_messages_cache.pop(int(ident), None)
                 self.downloads.pop((ident, str(mid)), None)
                 self.sent.forget(target, mid)
-                asyncio.create_task(self.daemon.refresh_dialogs_cache())
                 return {"ok": True}
             if action == "presence":
                 now = time.time()
@@ -308,7 +378,7 @@ class Telegram:
             if action == "read" and data.get("messageId"):
                 await client.send_read_acknowledge(int(ident), max_id=int(data["messageId"]))
                 self.daemon.messages_cache.clear()
-                self.on_update()
+                self.on_update(ident)
                 return {"ok": True}
             if action == "send":
                 result = await self.daemon.execute_command({"action": "send", "chat_id": ident, "text": data["text"], "reply_to": data.get("replyId") or None})
@@ -348,10 +418,16 @@ class WhatsApp:
         self.store = self.state / "store"
         self.helper_state = self.state / "helper"
         self.binary = Path.home() / ".local/bin/wacli"
-        self.sent = SentMessages(RUNTIME)
+        self.sent = SentMessages(SENT)
         self.version_checked = False
         self.login = None
         self.maintenance = 0
+        self.write_lock = asyncio.Lock()
+        self.write_tasks = set()
+        self.on_update = lambda chat="": None
+        # (expires, result): `wacli doctor` and systemctl are local processes;
+        # don't spawn them for every chat-list refresh.
+        self.status_cache = None
 
     async def sync(self, start, wait=False):
         process = await asyncio.create_subprocess_exec("systemctl", "--user", *([] if wait else ["--no-block"]), "start" if start else "stop",
@@ -365,6 +441,16 @@ class WhatsApp:
         return backend
 
     async def status(self):
+        now = time.monotonic()
+        if self.status_cache and now < self.status_cache[0]:
+            return dict(self.status_cache[1])
+        result = await self._status()
+        if not result.get("linking"):
+            healthy = result.get("authorized") and result.get("syncActive")
+            self.status_cache = (time.monotonic() + (STATUS_TTL if healthy else STATUS_RETRY_TTL), dict(result))
+        return result
+
+    async def _status(self):
         if not self.binary.is_file():
             return {"ok": True, "authorized": False, "installed": False}
         if not self.version_checked:
@@ -388,14 +474,44 @@ class WhatsApp:
                 "authState": "authorized" if result.get("authenticated") else self.login.state if self.login else "disconnected"}
 
     async def call(self, action, data):
-        writing = action in {"send", "file", "voice", "edit", "delete", "reaction", "read", "pin", "login", "logout"}
-        if writing:
-            self.maintenance += 1
-        try:
+        writing = action in {"send", "file", "voice", "edit", "delete", "reaction", "read", "pin", "login", "logout", "cancel_login"}
+        if action not in READ_ONLY_ACTIONS:
+            self.status_cache = None
+        if not writing:
             return await self._call(action, data)
-        finally:
-            if writing:
-                self.maintenance -= 1
+        # wacli runs in a worker thread that a request timeout cannot stop. Keep
+        # the store in maintenance until the work really ends, and announce a
+        # late result so a send confirmed after the timeout still appears.
+        work_started = [False]
+        async def write():
+            # Retain serialization even after the outer request times out.
+            # In particular, logout must not delete a still-active upload's store.
+            async with self.write_lock:
+                work_started[0] = True
+                self.maintenance += 1
+                try:
+                    return await self._call(action, data)
+                finally:
+                    self.maintenance -= 1
+                    self.status_cache = None
+
+        work = asyncio.create_task(write())
+        self.write_tasks.add(work)
+
+        def finished(task):
+            self.write_tasks.discard(task)
+            if not task.cancelled():
+                task.exception()
+        work.add_done_callback(finished)
+        try:
+            return await asyncio.shield(work)
+        except asyncio.CancelledError:
+            if not work.done() and not work_started[0]:
+                work.cancel()
+            elif not work.done():
+                target = data.get("chat") if isinstance(data.get("chat"), dict) else {}
+                work.add_done_callback(lambda task: self.on_update(str(target.get("id", ""))))
+            raise
 
     async def _call(self, action, data):
         if action == "cancel_login":
@@ -528,6 +644,8 @@ class WhatsApp:
         return {"ok": True, **({"message": sent} if sent else {})}
 
     async def close(self):
+        if self.write_tasks:
+            await asyncio.gather(*list(self.write_tasks), return_exceptions=True)
         self.sent.close()
         if self.login:
             await self.login.cancel()
@@ -548,7 +666,7 @@ class Bridge:
     def make_provider(self, name, account):
         provider = (Telegram if name == "telegram" else WhatsApp)(account)
         self.providers[instance_key(name, account)] = provider
-        provider.on_update = lambda: self.on_event({"event": "provider_changed", "provider": name, "account": account})
+        provider.on_update = lambda chat="": self.on_event({"event": "provider_changed", "provider": name, "account": account, "chat": chat})
         return provider
 
     async def dispatch(self, request):
@@ -582,6 +700,11 @@ class Bridge:
                 raise ProviderError(str(exc)) from exc
             return {"ok": True, "accounts": self.accounts.rows()}
         if action == "configure":
+            # Timed-out WhatsApp uploads can outlive their request tasks and
+            # still use clipboard/voice files that configuration discards.
+            for provider in list(self.providers.values()):
+                if isinstance(provider, WhatsApp) and provider.write_tasks:
+                    await asyncio.gather(*list(provider.write_tasks), return_exceptions=True)
             self.clipboard.close()
             await self.voice.discard()
             enabled = request.get("enabled", [])
@@ -705,21 +828,37 @@ class Bridge:
         self.clipboard.close()
 
 
+LOCK_WAIT = 15
+CONFIGURE_SHARED = {"clipboard_image", "discard_clipboard", "voice_start", "voice_stop", "voice_discard", "voice", "file"}
+
+
 async def main():
     os.umask(0o077)
     for path in (STATE, CACHE, CONFIG, RUNTIME):
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
         path.chmod(0o700)
     # One bridge per user, including during plugin reload or multiple bar instances.
+    # A reloading predecessor may still be closing its sessions; wait for it.
     import fcntl
     lock = (RUNTIME / "bridge.lock").open("w")
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        return
+    deadline = time.monotonic() + LOCK_WAIT
+    while True:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                sys.stdout.write(json.dumps({"event": "bridge_busy"}) + "\n")
+                sys.stdout.flush()
+                lock.close()
+                return 1
+            await asyncio.sleep(0.25)
+    # Previews from a previous run are no longer referenced by any client.
+    if not SENT.is_symlink():
+        shutil.rmtree(SENT, ignore_errors=True)
     bridge = Bridge()
     runner = RequestRunner()
-    tasks = set()
+    tasks = {}
     output = sys.stdout
     sink = open(os.devnull, "w")
     sys.stdout = sink
@@ -769,15 +908,21 @@ async def main():
                     request = {}
                     raise ProviderError("Invalid request.")
                 if request.get("action") == "configure":
-                    if tasks:
-                        await asyncio.gather(*tasks)
+                    # Only work for services being disabled, or using the shared
+                    # clipboard/recorder that configure resets, must finish first.
+                    enabled = request.get("enabled", [])
+                    enabled = enabled if isinstance(enabled, list) else []
+                    affected = [work for work, (name, action) in tasks.items()
+                                if (name in ("telegram", "whatsapp") and name not in enabled) or action in CONFIGURE_SHARED]
+                    if affected:
+                        await asyncio.gather(*affected, return_exceptions=True)
                     await respond(request)
                 else:
                     if len(tasks) >= 32:
                         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                     work = asyncio.create_task(respond(request))
-                    tasks.add(work)
-                    work.add_done_callback(tasks.discard)
+                    tasks[work] = (request.get("provider", ""), request.get("action"))
+                    work.add_done_callback(lambda done: tasks.pop(done, None))
             except ProviderError as exc:
                 output.write(json.dumps({"ok": False, "error": str(exc), "requestId": request.get("requestId")}) + "\n")
                 output.flush()
@@ -785,15 +930,16 @@ async def main():
                 output.write('{"ok":false,"error":"Invalid JSON request."}\n')
                 output.flush()
         if tasks:
-            await asyncio.gather(*tasks)
+            await asyncio.gather(*list(tasks))
     except asyncio.CancelledError:
-        for work in tasks:
+        for work in list(tasks):
             work.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.gather(*list(tasks), return_exceptions=True)
     finally:
         await bridge.close()
         lock.close()
+    return 0
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(asyncio.run(main()))

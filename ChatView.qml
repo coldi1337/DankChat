@@ -34,9 +34,10 @@ Item {
     Connections {
         target: root.Window.window
         function onActiveChanged() {
+            viewportTimer.restart();
             if (!root.compact || root.service.closeOnBlur === false) return;
             if (root.Window.window.active) root.receivedKeyboardFocus = true;
-            else if (root.receivedKeyboardFocus && !fileDialog.visible && !attachmentConfirm.visible && !mediaDialog.visible && !disconnectConfirm.visible && !deleteConfirm.visible) root.service.closeDropdown();
+            else if (root.receivedKeyboardFocus && !fileDialog.visible && !attachmentConfirm.visible && !mediaDialog.visible && !externalConfirm.visible && !deleteConfirm.visible) root.service.closeDropdown();
         }
     }
     focus: true
@@ -64,7 +65,26 @@ Item {
     }
     DankTooltipV2 { id: deliveryTooltip }
     component Label: StyledText { textFormat: Text.PlainText; color: Theme.surfaceText }
-    component Action: DankActionButton { circular: false; iconColor: Theme.surfaceText }
+    component Action: DankActionButton { circular: false; iconColor: Theme.surfaceText; Accessible.name: tooltipText }
+    function startOfDay(date, offset) { return new Date(date.getFullYear(), date.getMonth(), date.getDate() + (offset || 0)).getTime(); }
+    // Day heading for the message list; empty for messages without a timestamp.
+    function dayKey(timestamp) { return timestamp ? Qt.formatDate(new Date(timestamp * 1000), "yyyy-MM-dd") : ""; }
+    function dayLabel(key) {
+        if (!key) return "";
+        const parts = key.split("-").map(Number), day = new Date(parts[0], parts[1] - 1, parts[2]);
+        const now = new Date();
+        if (day.getTime() === startOfDay(now)) return I18n.trFor("dankChat", "Today");
+        if (day.getTime() === startOfDay(now, -1)) return I18n.trFor("dankChat", "Yesterday");
+        return Qt.formatDate(day, "dd.MM.yyyy");
+    }
+    // Compact last-activity time for chat rows.
+    function chatTime(timestamp) {
+        if (!timestamp) return "";
+        const date = new Date(timestamp * 1000), day = startOfDay(date), now = new Date();
+        if (day === startOfDay(now)) return Qt.formatTime(date, "HH:mm");
+        if (day === startOfDay(now, -1)) return I18n.trFor("dankChat", "Yesterday");
+        return Qt.formatDate(date, date.getFullYear() === now.getFullYear() ? "dd.MM." : "dd.MM.yy");
+    }
     component MenuEntry: Controls.MenuItem {
         id: entry
         implicitHeight: 36
@@ -118,9 +138,9 @@ Item {
             Label { visible: root.service.demo; text: I18n.trFor("dankChat", "Demo"); color: Theme.primary; font.pixelSize: Theme.fontSizeSmall }
             Item { Layout.fillWidth: true }
             Action { iconName: "settings"; tooltipText: I18n.trFor("dankChat", "Settings"); onClicked: { root.service.settingsOpen = !root.service.settingsOpen; root.service.accountsOpen = false; } }
-            Action { iconName: "manage_accounts"; onClicked: { root.service.accountsOpen = !root.service.accountsOpen; root.service.settingsOpen = false; } }
+            Action { iconName: "manage_accounts"; tooltipText: I18n.trFor("dankChat", "Accounts"); onClicked: { root.service.accountsOpen = !root.service.accountsOpen; root.service.settingsOpen = false; } }
             Action { visible: root.compact; iconName: "open_in_new"; tooltipText: I18n.trFor("dankChat", "Open in window"); onClicked: root.expandRequested() }
-            Action { iconName: "close"; onClicked: root.closeRequested() }
+            Action { iconName: "close"; tooltipText: I18n.trFor("dankChat", "Close"); onClicked: root.closeRequested() }
         }
         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.outline; opacity: 0.3 }
         Label {
@@ -251,6 +271,7 @@ Item {
                                     DankIcon { visible: !!chatRow.modelData.pinned; name: "push_pin"; size: 14; color: Theme.primary }
                                     Label { Layout.fillWidth: true; Layout.minimumWidth: 0; text: chatRow.modelData.name; wrapMode: Text.NoWrap; maximumLineCount: 1; elide: Text.ElideRight; font.weight: Font.Medium }
                                     Label { text: chatRow.modelData.provider === "telegram" ? "TG" : "WA"; wrapMode: Text.NoWrap; color: Theme.primary; font.pixelSize: Theme.fontSizeSmall }
+                                    Label { objectName: "chatTime"; visible: text.length > 0; text: root.chatTime(chatRow.modelData.timestamp); wrapMode: Text.NoWrap; color: Theme.surfaceVariantText; font.pixelSize: Theme.fontSizeSmall }
                                 }
                                 Label { Layout.fillWidth: true; Layout.minimumWidth: 0; text: chatRow.modelData.preview; wrapMode: Text.NoWrap; maximumLineCount: 1; elide: Text.ElideRight; color: Theme.surfaceVariantText; font.pixelSize: Theme.fontSizeSmall }
                             }
@@ -315,7 +336,7 @@ Item {
                 spacing: Theme.spacingS
                 RowLayout {
                     Layout.fillWidth: true
-                    Action { visible: root.narrow; iconName: "arrow_back"; onClicked: root.service.selectedChat = null }
+                    Action { visible: root.narrow; iconName: "arrow_back"; tooltipText: I18n.trFor("dankChat", "Back to chats"); onClicked: root.service.selectedChat = null }
                     Avatar { visible: !!root.service.selectedChat; label: root.service.selectedChat?.name || "" }
                     ColumnLayout {
                         Layout.fillWidth: true; spacing: 2
@@ -341,6 +362,21 @@ Item {
                     Layout.fillWidth: true; Layout.fillHeight: true
                     clip: true; spacing: Theme.spacingS
                     model: ListModel { id: messageRows; dynamicRoles: true }
+                    section.property: "day"
+                    section.criteria: ViewSection.FullString
+                    section.delegate: Item {
+                        id: daySection
+                        required property string section
+                        width: ListView.view.width
+                        height: section ? dayHeading.implicitHeight + Theme.spacingS * 2 : 0
+                        Rectangle {
+                            visible: !!daySection.section
+                            anchors.centerIn: parent
+                            width: dayHeading.implicitWidth + Theme.spacingM * 2; height: dayHeading.implicitHeight + 6
+                            radius: height / 2; color: Theme.surfaceContainer
+                            Label { id: dayHeading; objectName: "dayHeading"; anchors.centerIn: parent; text: root.dayLabel(daySection.section); color: Theme.surfaceVariantText; font.pixelSize: Theme.fontSizeSmall; wrapMode: Text.NoWrap }
+                        }
+                    }
                     function syncMessages() {
                         const incoming = root.service.messages;
                         const key = root.service.selectedChat?.key || "";
@@ -354,19 +390,22 @@ Item {
                                     if (messageRows.get(j).entry.id === row.id) { existing = j; break; }
                                 }
                                 if (existing >= 0) messageRows.move(existing, i, 1);
-                                else messageRows.insert(i, {entry: row, signature: signature});
+                                else messageRows.insert(i, {entry: row, signature: signature, day: root.dayKey(row.timestamp)});
                             }
-                            if (i >= messageRows.count) messageRows.append({entry: row, signature: signature});
+                            if (i >= messageRows.count) messageRows.append({entry: row, signature: signature, day: root.dayKey(row.timestamp)});
                             else if (messageRows.get(i).signature !== signature) {
                                 messageRows.setProperty(i, "entry", row);
                                 messageRows.setProperty(i, "signature", signature);
+                                messageRows.setProperty(i, "day", root.dayKey(row.timestamp));
                             }
                         }
                         if (messageRows.count > incoming.length) messageRows.remove(incoming.length, messageRows.count - incoming.length);
                     }
                     function reportViewport() {
                         if (!visible || !root.Window.window?.visible || !root.service.surfaceOpen || typeof root.service.loadNextMedia !== "function") return;
-                        root.service.readingLatest = atYEnd && !root.service.historyContext;
+                        // A visible window may sit unattended on another workspace. The
+                        // dropdown closes on outside clicks, so its visibility suffices.
+                        root.service.readingLatest = atYEnd && !root.service.historyContext && (root.compact || !!root.Window.window?.active);
                         root.service.readVisibleChat();
                         const ids = [];
                         for (let i = 0; i < count; i++) {
@@ -551,7 +590,7 @@ Item {
                                         iconName: "open_in_new"; width: 26; height: 26; iconSize: 16
                                         iconColor: bubble.readableText
                                         tooltipText: I18n.trFor("dankChat", "Open media")
-                                        onClicked: Qt.openUrlExternally(Links.localFileUrl(messageRow.modelData.mediaPath))
+                                        onClicked: root.openExternally(messageRow.modelData)
                                     }
                                     Action {
                                         visible: !!messageRow.modelData.mediaPath
@@ -590,7 +629,7 @@ Item {
                                         onClicked: root.openReactionPicker(messageRow.modelData)
                                     }
                                     Action { iconName: "delete_outline"; width: 26; height: 26; iconSize: 16; tooltipText: I18n.trFor("dankChat", "Delete message…"); enabled: !root.service.demo && !root.service.writing; onClicked: root.openDeleteMessage(messageRow.modelData) }
-                                    Action { iconName: "reply"; width: 26; height: 26; iconSize: 16; onClicked: root.service.setReply(messageRow.modelData) }
+                                    Action { iconName: "reply"; width: 26; height: 26; iconSize: 16; tooltipText: I18n.trFor("dankChat", "Reply"); onClicked: root.service.setReply(messageRow.modelData) }
                                 }
                             }
                         }
@@ -692,7 +731,13 @@ Item {
                                 Controls.ContextMenu.menu: TextMenu { editor: composer; composerPaste: true }
                                 onTextChanged: if (text !== root.service.draft) root.service.setDraft(text)
                                 Keys.onPressed: event => {
-                                    if (event.matches(StandardKey.Paste)) { event.accepted = true; root.pasteClipboard(); }
+                                    if (event.matches(StandardKey.Paste)) { event.accepted = true; root.pasteClipboard(); return; }
+                                    // As in common messengers: Up in an empty composer edits your last text.
+                                    if (event.key === Qt.Key_Up && !event.modifiers && composer.length === 0 && !root.service.demo && !root.service.writing) {
+                                        const own = root.service.messages.slice().reverse().find(message => message.out && !!message.text);
+                                        if (own) { event.accepted = true; root.openEdit(own); return; }
+                                    }
+                                    if (event.key === Qt.Key_Escape && root.service.reply) { event.accepted = true; root.service.setReply(null); }
                                 }
                                 Keys.onReturnPressed: event => {
                                     if (!(event.modifiers & Qt.ShiftModifier)) { root.service.sendMessage(""); event.accepted = true; }
@@ -701,7 +746,7 @@ Item {
                             }
                         }
                         Action { objectName: "recordVoiceButton"; iconName: "mic"; tooltipText: I18n.trFor("dankChat", "Record voice message"); enabled: !root.service.demo && !root.service.writing && !root.service.voiceState; onClicked: root.service.startVoice() }
-                        Action { iconName: "send"; enabled: !root.service.demo && !root.service.writing && root.service.draft.trim().length > 0; onClicked: root.service.sendMessage("") }
+                        Action { iconName: "send"; tooltipText: I18n.trFor("dankChat", "Send"); enabled: !root.service.demo && !root.service.writing && root.service.draft.trim().length > 0; onClicked: root.service.sendMessage("") }
                     }
                 }
             }
@@ -809,7 +854,7 @@ Item {
                     leftIconName: "search"
                     showClearButton: true
                 }
-                Action { iconName: "close"; onClicked: emojiPicker.close() }
+                Action { iconName: "close"; tooltipText: I18n.trFor("dankChat", "Close"); onClicked: emojiPicker.close() }
             }
             GridLayout {
                 Layout.fillWidth: true
@@ -983,12 +1028,12 @@ Item {
             RowLayout {
                 anchors.left: parent.left
                 anchors.right: parent.right
-                Action { iconName: "zoom_out"; enabled: imageViewport.zoom > 1; onClicked: imageViewport.setZoom(imageViewport.zoom / 1.25) }
+                Action { iconName: "zoom_out"; tooltipText: I18n.trFor("dankChat", "Zoom out"); enabled: imageViewport.zoom > 1; onClicked: imageViewport.setZoom(imageViewport.zoom / 1.25) }
                 Label { text: Math.round(imageViewport.zoom * 100) + "%" }
-                Action { iconName: "zoom_in"; enabled: imageViewport.zoom < 8; onClicked: imageViewport.setZoom(imageViewport.zoom * 1.25) }
-                Action { iconName: "fit_screen"; onClicked: imageViewport.setZoom(1) }
+                Action { iconName: "zoom_in"; tooltipText: I18n.trFor("dankChat", "Zoom in"); enabled: imageViewport.zoom < 8; onClicked: imageViewport.setZoom(imageViewport.zoom * 1.25) }
+                Action { iconName: "fit_screen"; tooltipText: I18n.trFor("dankChat", "Fit to window"); onClicked: imageViewport.setZoom(1) }
                 Item { Layout.fillWidth: true }
-                Action { iconName: "close"; onClicked: mediaDialog.close() }
+                Action { iconName: "close"; tooltipText: I18n.trFor("dankChat", "Close"); onClicked: mediaDialog.close() }
             }
         }
     }
@@ -1031,28 +1076,49 @@ Item {
         }
         onAccepted: root.service.deleteMessage(root.deleteTarget, root.deleteChat.deleteForMe !== false && !deleteScope.checked, root.deleteChat.key)
     }
-    property string disconnectProvider: ""
+    // Received files come from other people. Media types open directly; anything
+    // else (documents, archives, scripts, HTML) asks before the default handler runs.
+    function isMediaFile(message) {
+        const mime = String(message?.mimeType || "").toLowerCase();
+        // SVG is an active document format and can open in a browser.
+        if (mime === "image/svg+xml" || /\.svgz?$/i.test(message?.filename || message?.mediaPath || "")) return false;
+        return ["image/", "video/", "audio/"].some(prefix => mime.startsWith(prefix))
+            || (!mime && ["photo", "image", "sticker", "gif", "video", "audio", "voice", "ptt"].includes(message?.mediaType));
+    }
+    property string externalPath: ""
+    function openExternally(message) {
+        if (!message?.mediaPath) return;
+        if (isMediaFile(message)) { Qt.openUrlExternally(Links.localFileUrl(message.mediaPath)); return; }
+        externalPath = message.mediaPath;
+        externalName = message.filename || message.mediaPath.split("/").pop();
+        externalConfirm.open();
+    }
+    property string externalName: ""
     Controls.Dialog {
-        id: disconnectConfirm
+        id: externalConfirm
+        objectName: "openExternalDialog"
         anchors.centerIn: parent
-        width: Math.min(root.width - 32, 420)
+        width: Math.min(root.width - 32, 440)
         modal: true
         popupType: Controls.Popup.Item
-        title: (root.disconnectProvider === "telegram" ? "Telegram" : "WhatsApp") + " — " + I18n.trFor("dankChat", "Disconnect account")
         background: Rectangle { color: Theme.surfaceContainer; radius: Theme.cornerRadius; border.color: Theme.outline }
-        header: Label { text: disconnectConfirm.title; padding: Theme.spacingM; wrapMode: Text.Wrap }
-        contentItem: Label {
-            text: I18n.trFor("dankChat", "Sign out this DankChat device and remove its cached chats, media and drafts? Messages on your phone stay intact. Linking again requires a new QR code.")
-            wrapMode: Text.Wrap
+        header: Label { text: I18n.trFor("dankChat", "Open this file?"); padding: Theme.spacingM; wrapMode: Text.Wrap }
+        contentItem: ColumnLayout {
+            spacing: Theme.spacingS
+            Label { Layout.fillWidth: true; text: root.externalName; wrapMode: Text.WrapAnywhere; font.weight: Font.Medium }
+            Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: I18n.trFor("dankChat", "It opens in its default application. Only open files you trust; received files can contain harmful content.") }
         }
         footer: RowLayout {
             Item { Layout.fillWidth: true }
-            DankButton { text: I18n.trFor("dankChat", "Cancel"); onClicked: disconnectConfirm.reject() }
-            DankButton { text: I18n.trFor("dankChat", "Disconnect account"); onClicked: disconnectConfirm.accept() }
+            DankButton { text: I18n.trFor("dankChat", "Cancel"); onClicked: externalConfirm.reject() }
+            DankButton { text: I18n.trFor("dankChat", "Open"); onClicked: externalConfirm.accept() }
         }
-        onAccepted: root.service.accountAction(root.disconnectProvider, "logout")
+        onAccepted: if (root.externalPath) Qt.openUrlExternally(Links.localFileUrl(root.externalPath))
+        onClosed: { root.externalPath = ""; root.externalName = ""; }
     }
     readonly property string attachmentChatKey: service.selectedChat?.key || ""
+    readonly property var unconfirmedAttachments: service.attachmentUnconfirmed?.[attachmentChatKey] || []
+    readonly property var sendableAttachments: attachmentPaths.filter(path => !unconfirmedAttachments.includes(path))
     Controls.Dialog {
         id: attachmentConfirm
         anchors.centerIn: parent
@@ -1065,7 +1131,7 @@ Item {
         footer: RowLayout {
             Item { Layout.fillWidth: true }
             DankButton { text: I18n.trFor("dankChat", "Cancel"); onClicked: attachmentConfirm.reject() }
-            DankButton { text: I18n.trFor("dankChat", "Send") + " (" + root.attachmentPaths.length + ")"; enabled: root.attachmentPaths.length > 0 && !root.service.demo && !root.service.writing; onClicked: attachmentConfirm.accept() }
+            DankButton { text: I18n.trFor("dankChat", "Send") + " (" + root.sendableAttachments.length + ")"; enabled: root.sendableAttachments.length > 0 && !root.service.demo && !root.service.writing; onClicked: attachmentConfirm.accept() }
         }
         contentItem: ColumnLayout {
             spacing: Theme.spacingS
@@ -1077,19 +1143,35 @@ Item {
                     width: parent.width
                     Repeater {
                         model: root.attachmentPaths
-                        delegate: RowLayout {
+                        delegate: ColumnLayout {
+                            id: attachmentRow
                             required property string modelData
                             required property int index
+                            readonly property bool unconfirmed: root.unconfirmedAttachments.includes(modelData)
                             Layout.fillWidth: true
-                            Image {
-                                visible: root.attachmentIsImage(modelData)
-                                Layout.preferredWidth: 72; Layout.preferredHeight: 64
-                                source: visible ? Links.localFileUrl(modelData) : ""
-                                fillMode: Image.PreserveAspectFit
-                                asynchronous: true; sourceSize.width: 240
+                            spacing: Theme.spacingXS
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Image {
+                                    visible: root.attachmentIsImage(attachmentRow.modelData)
+                                    Layout.preferredWidth: 72; Layout.preferredHeight: 64
+                                    source: visible ? Links.localFileUrl(attachmentRow.modelData) : ""
+                                    fillMode: Image.PreserveAspectFit
+                                    asynchronous: true; sourceSize.width: 240
+                                }
+                                Label { Layout.fillWidth: true; Layout.minimumWidth: 0; text: attachmentRow.modelData.split("/").pop(); wrapMode: Text.WrapAnywhere }
+                                Action { iconName: "close"; tooltipText: I18n.trFor("dankChat", "Remove"); Accessible.name: tooltipText; enabled: !root.service.writing; onClicked: { root.discardClipboardPaths([attachmentRow.modelData]); root.service.setAttachmentPaths(root.attachmentPaths.filter((_, i) => i !== attachmentRow.index), root.attachmentChatKey); } }
                             }
-                            Label { Layout.fillWidth: true; Layout.minimumWidth: 0; text: modelData.split("/").pop(); wrapMode: Text.WrapAnywhere }
-                            Action { iconName: "close"; enabled: !root.service.writing; onClicked: { root.discardClipboardPaths([modelData]); root.service.setAttachmentPaths(root.attachmentPaths.filter((_, i) => i !== index), root.attachmentChatKey); } }
+                            // The upload of this file was not confirmed: it may already be in the chat.
+                            Label {
+                                Layout.fillWidth: true; visible: attachmentRow.unconfirmed; wrapMode: Text.Wrap; color: Theme.error; font.pixelSize: Theme.fontSizeSmall
+                                text: I18n.trFor("dankChat", "Upload not confirmed. Check the conversation; send it again only if it is missing.")
+                            }
+                            DankButton {
+                                visible: attachmentRow.unconfirmed; enabled: !root.service.writing
+                                text: I18n.trFor("dankChat", "Send again")
+                                onClicked: root.service.includeUnconfirmedAttachment(root.attachmentChatKey, attachmentRow.modelData)
+                            }
                         }
                     }
                 }
@@ -1101,11 +1183,12 @@ Item {
             }
         }
         onAccepted: {
-            const paths = root.attachmentPaths.slice(), key = root.attachmentChatKey;
+            const paths = root.sendableAttachments.slice(), key = root.attachmentChatKey;
+            const held = root.attachmentPaths.filter(path => !paths.includes(path));
             root.service.sendAttachments(paths, key, sent => {
                 root.discardClipboardPaths(paths.slice(0, sent));
-                root.service.setAttachmentPaths(paths.slice(sent), key);
-                if (sent < paths.length && root.service.surfaceOpen && root.service.selectedChat?.key === key) attachmentConfirm.open();
+                root.service.setAttachmentPaths(held.concat(paths.slice(sent)), key);
+                if ((sent < paths.length || held.length) && root.service.surfaceOpen && root.service.selectedChat?.key === key) attachmentConfirm.open();
             });
         }
         onRejected: { if (root.service.writing) return; root.discardClipboardPaths(root.attachmentPaths); root.service.setAttachmentPaths([], root.attachmentChatKey); }

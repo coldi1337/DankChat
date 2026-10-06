@@ -93,7 +93,8 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
         with patch('pathlib.Path.exists', return_value=True):
             await provider.status()
             provider.sync.assert_not_called()
-            provider.maintenance = 0; await provider.status()
+            # A finished write invalidates the cached status.
+            provider.maintenance = 0; provider.status_cache = None; await provider.status()
             provider.sync.assert_awaited_once_with(True)
 
     async def test_expired_media_has_actionable_error_and_does_not_write(self):

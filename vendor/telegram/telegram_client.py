@@ -327,7 +327,7 @@ class TelegramBackend:
             pass
         return ""
 
-    async def refresh_dialogs_cache(self, limit=40):
+    async def refresh_dialogs_cache(self, limit=40, raise_errors=False):
         if not await self.client.is_user_authorized():
             self.dialogs_cache = []
             return []
@@ -441,6 +441,8 @@ class TelegramBackend:
             self.unread_total = total_unread
             return result
         except Exception as e:
+            if raise_errors:
+                raise
             print(f"Error refreshing dialogs: {e}", file=sys.stderr)
             return self.dialogs_cache
 
@@ -792,7 +794,7 @@ class TelegramBackend:
             self.messages_cache.pop(cache_key, None)
             if cid in getattr(self, "chat_messages_cache", {}):
                 del self.chat_messages_cache[cid]
-            asyncio.create_task(self.refresh_dialogs_cache())
+            # DankChat: the bridge refetches the full chat list after writes.
             return {"success": True, "message_id": sent.id}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -819,7 +821,7 @@ class TelegramBackend:
                     self.messages_cache.pop(ck, None)
             if cid in getattr(self, "chat_messages_cache", {}):
                 del self.chat_messages_cache[cid]
-            asyncio.create_task(self.refresh_dialogs_cache())
+            # DankChat: the bridge refetches the full chat list after writes.
             return {"success": True, "message_id": sent.id}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -841,7 +843,8 @@ class TelegramBackend:
             for d in self.dialogs_cache:
                 if d.get("id") == cid:
                     d["unread_count"] = 0
-            await self.update_unread_count()
+            # DankChat: derive the total locally instead of another dialog fetch.
+            self.unread_total = sum(d.get("unread_count", 0) or 0 for d in self.dialogs_cache)
             return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -1225,7 +1228,8 @@ class TelegramBackend:
             cache_key = f"{chat_id}_{topic_id or '0'}"
             import time as _time
             cached = self.messages_cache.get(cache_key)
-            if cached and (_time.time() - cached[1]) < 1.5:
+            # DankChat raises the lifetime: its update events clear this cache.
+            if cached and (_time.time() - cached[1]) < getattr(self, "messages_cache_ttl", 1.5):
                 return {"success": True, "chat_id": chat_id, "messages": cached[0]}
             # Fetch messages first (fast), then merge pinned from cache
             msgs = await self.get_messages_for_chat(chat_id, lim, topic_id=topic_id)
