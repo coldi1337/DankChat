@@ -1,6 +1,50 @@
 # Validation record
 
-## Current acceptance status
+## 0.6.0 review validation — 2026-10-06
+
+Reviewed the complete proposed diff in the separate `fix/review-v0.5.1`
+worktree. The live plugin was not changed and no DMS service was restarted.
+All account-facing tests used synthetic data and temporary HOME/XDG directories.
+
+Additional corrections made during review:
+
+- `backend/bridge.py`: Telegram writes invalidate the chat list after completion,
+  including when a concurrent refresh finished during the write. Cancelled
+  refreshes stay dirty; failed refreshes back off and respect flood waits.
+- `backend/bridge.py`: track and serialize WhatsApp writes after request timeout;
+  logout, shutdown and reconfiguration wait before removing stores, previews or
+  shared temporary files. A cancelled write still queued behind another upload
+  is discarded rather than sent later.
+- `backend/whatsapp_sync.py`: socket-owner lookup matches both endpoints and an
+  established connection, not just a source port that another connection may share.
+- `ChatView.qml`: SVG documents require confirmation before opening externally,
+  even though their MIME type begins with `image/`.
+- `scripts/test`: headless Qt tests use a platform theme that does not require a
+  GTK display when HOME/XDG are isolated.
+
+Results on DMS 1.6.2, Quickshell 0.3.1 and Qt 6.11.2:
+
+- 120 application Python tests passed; 153 vendored WhatsApp tests ran with one
+  skip and no failures. QML parsing, 12 QtTest checks and manifest validation passed.
+- Isolated UI harness passed in German and English, including date headings,
+  translated activity dates and external-media classification. The rendered
+  German date heading was visually inspected.
+- The 290-step service harness passed, including pending/read-retry behavior,
+  rejected edits, repopulating unchanged chats after relinking and changing the
+  read-sync preference.
+- Missing-picker test passed; the deliberately invalid view failed with the
+  expected `MissingFixtureType is not a type` error.
+- Fresh dependency installation with `--require-hashes` succeeded. All declared
+  dependency hashes matched PyPI metadata; both pinned wacli architecture hashes
+  matched the official 0.19.0 checksum file.
+
+The Telegram application ID and custom credentials for additional accounts remain
+deferred by maintainer decision. No real-account messaging, login, delivery/read
+events or performance/battery measurements were performed for this review.
+The registry-entry draft matches the manifest and passes the upstream
+required-field check; published-link validation must follow release publication.
+
+## Historical acceptance status
 
 On 2026-09-13, the maintainer reported completing broader hands-on testing and
 confirmed that the current features work without issues in their setup. On that
