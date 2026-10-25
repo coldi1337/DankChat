@@ -510,7 +510,7 @@ Item {
                                 id: bubbleContent
                                 anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                                 anchors.margins: Theme.spacingS; spacing: Theme.spacingXS
-                                Label { Layout.fillWidth: true; wrapMode: Text.NoWrap; elide: Text.ElideRight; visible: !messageRow.modelData.out && !!messageRow.modelData.sender; text: messageRow.modelData.sender; color: bubble.readableAccent; font.pixelSize: Theme.fontSizeSmall }
+                                Label { Layout.fillWidth: true; wrapMode: Text.NoWrap; elide: Text.ElideRight; visible: !messageRow.modelData.out && !!messageRow.modelData.sender; text: messageRow.modelData.sender || ""; color: bubble.readableAccent; font.pixelSize: Theme.fontSizeSmall }
                                 Label {
                                     Layout.fillWidth: true
                                     visible: !!messageRow.modelData.replyText || !!messageRow.modelData.replyId

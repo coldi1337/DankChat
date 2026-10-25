@@ -2,7 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Common
-import qs.DankCommon.Common as DC
+import qs.DCommon.Common as DC
 import qs.Modals.FileBrowser
 import qs.Widgets
 import qs.Services
@@ -15,7 +15,7 @@ ShellRoot {
     property int attachmentsSent: -1
     property string recoveryChatKey: ""
     function reviewStateRegressions(chat) {
-        const send = chat.sendRequest, refresh = chat.refreshAccount;
+        const send = chat.sendRequestOverride, refresh = chat.refreshAccountOverride;
         const original = {};
         const fields = ["selectedChat", "messages", "readingLatest", "historyContext", "loadingMessages", "settingsOpen", "accountsOpen", "pluginData", "chats", "automaticReadAttempts", "automaticReadFailures", "markingRead", "writing", "errorText", "chatSignatures", "statuses", "accountStatuses"];
         fields.forEach(key => original[key] = chat[key]);
@@ -28,8 +28,8 @@ ShellRoot {
             chat.automaticReadAttempts = {}; chat.automaticReadFailures = {}; chat.markingRead = {};
             chat.messages = [{id: "100", out: false}];
             const calls = [];
-            chat.sendRequest = (provider, action, payload, callback) => { calls.push({action: action, payload: payload, callback: callback}); return true; };
-            chat.refreshAccount = () => {};
+            chat.sendRequestOverride = (provider, action, payload, callback) => { calls.push({action: action, payload: payload, callback: callback}); return true; };
+            chat.refreshAccountOverride = () => {};
             chat.readVisibleChat();
             chat.messages = [{id: "101", out: false}];
             chat.readVisibleChat();
@@ -45,16 +45,16 @@ ShellRoot {
             if (calls.length !== 3) return "FAIL failed automatic read was forgotten";
             calls[2].callback({ok: true});
             chat.readingLatest = false;
-            chat.sendRequest = () => false;
+            chat.sendRequestOverride = () => false;
             chat.editMessage({id: "101", out: true}, "edited", target);
             if (chat.writing) return "FAIL rejected edit locked composer";
 
             // An unchanged response must repopulate a logged-out/relinked account,
             // and read-sync preferences must invalidate the list comparison.
-            chat.refreshAccount = refresh;
+            chat.refreshAccountOverride = refresh;
             let authorized = true;
             const row = Object.assign({}, target, {unread: 0, serverUnread: 3});
-            chat.sendRequest = (provider, action, payload, callback) => {
+            chat.sendRequestOverride = (provider, action, payload, callback) => {
                 callback(action === "status" ? {ok: true, authorized: authorized} : {ok: true, chats: [row]});
                 return true;
             };
@@ -69,7 +69,7 @@ ShellRoot {
             if (chat.chats.find(c => c.key === target.key)?.unread !== 0) return "FAIL read sync setting retained old unread count";
             return "";
         } finally {
-            chat.sendRequest = send; chat.refreshAccount = refresh;
+            chat.sendRequestOverride = send; chat.refreshAccountOverride = refresh;
             fields.forEach(key => chat[key] = original[key]);
         }
     }

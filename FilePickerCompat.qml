@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import qs.Modals.FileBrowser
 
 Loader {
@@ -14,6 +15,12 @@ Loader {
     signal cancelled()
 
     function loadPicker() {
+        // Test-only override: exercise the no-compatible-picker branch without deleting
+        // DMS's own FilePicker component (DMS 2.0 depends on it, so it can't be removed).
+        if (Quickshell.env("DANKCHAT_TEST_MISSING_PICKER") === "1") {
+            loadError = "No compatible file picker is available. Update DMS and run python3 scripts/check-environment.";
+            return;
+        }
         // The stable FileBrowser import lets Quickshell register the host's
         // shared modules. Select the concrete type lazily across DMS versions.
         const candidates = [
