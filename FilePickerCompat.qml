@@ -17,6 +17,7 @@ Loader {
         // The stable FileBrowser import lets Quickshell register the host's
         // shared modules. Select the concrete type lazily across DMS versions.
         const candidates = [
+            ["modern", "qs.DCommon.FileBrowser", "FilePicker"],
             ["modern", "qs.DankCommon.FileBrowser", "FilePicker"],
             ["legacy", "qs.DankCommon.Modals.FileBrowser", "FileBrowserContent"],
             ["legacy", "qs.Modals.FileBrowser", "FileBrowserContent"]
