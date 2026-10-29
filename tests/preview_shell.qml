@@ -2,7 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Common
-import qs.DankCommon.Common as DC
+import qs.DCommon.Common as DC
 import qs.Modals.FileBrowser
 import qs.Widgets
 import "testplugin/linkify.js" as Colors

@@ -510,7 +510,7 @@ Item {
                                 id: bubbleContent
                                 anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                                 anchors.margins: Theme.spacingS; spacing: Theme.spacingXS
-                                Label { Layout.fillWidth: true; wrapMode: Text.NoWrap; elide: Text.ElideRight; visible: !messageRow.modelData.out && !!messageRow.modelData.sender; text: messageRow.modelData.sender; color: bubble.readableAccent; font.pixelSize: Theme.fontSizeSmall }
+                                Label { Layout.fillWidth: true; wrapMode: Text.NoWrap; elide: Text.ElideRight; visible: !messageRow.modelData.out && !!messageRow.modelData.sender; text: messageRow.modelData.sender || ""; color: bubble.readableAccent; font.pixelSize: Theme.fontSizeSmall }
                                 Label {
                                     Layout.fillWidth: true
                                     visible: !!messageRow.modelData.replyText || !!messageRow.modelData.replyId
@@ -724,10 +724,23 @@ Item {
                                 padding: 6
                                 selectionColor: Theme.primary
                                 selectedTextColor: Theme.primaryText
-                                placeholderText: root.service.demo ? I18n.trFor("dankChat", "Demo — sending disabled") : I18n.trFor("dankChat", "Write a message")
-                                color: Theme.surfaceText; placeholderTextColor: Theme.surfaceVariantText
+                                // Placeholder is rendered as a sibling Label (see composerPlaceholder) instead of
+                                // TextArea's built-in PlaceholderText, which binding-loops on width inside a ScrollView.
+                                readonly property string placeholderHint: root.service.demo ? I18n.trFor("dankChat", "Demo — sending disabled") : I18n.trFor("dankChat", "Write a message")
+                                color: Theme.surfaceText
                                 font.family: Theme.fontFamily; font.pixelSize: Theme.fontSizeMedium
                                 background: null
+                                Label {
+                                    id: composerPlaceholder
+                                    x: composer.leftPadding; y: composer.topPadding
+                                    width: composer.width - composer.leftPadding - composer.rightPadding
+                                    visible: composer.length === 0 && !composer.preeditText
+                                    text: composer.placeholderHint
+                                    color: Theme.surfaceVariantText
+                                    font: composer.font
+                                    verticalAlignment: Text.AlignVCenter
+                                    wrapMode: Text.NoWrap; elide: Text.ElideRight
+                                }
                                 Controls.ContextMenu.menu: TextMenu { editor: composer; composerPaste: true }
                                 onTextChanged: if (text !== root.service.draft) root.service.setDraft(text)
                                 Keys.onPressed: event => {
@@ -959,7 +972,10 @@ Item {
                 onLoadErrorChanged: if (loadError) {
                     root.service.errorText = I18n.trFor("dankChat", loadError);
                     root.savingDiagnostics = false;
-                    fileDialog.close();
+                    // Defer the close so it doesn't re-enter the dialog's visibility while the
+                    // Loader is still resolving its contentItem (which trips a binding loop on
+                    // Loader.active under newer Qt).
+                    Qt.callLater(fileDialog.close);
                 }
                 onFilesSelected: paths => {
                     const selectedPaths = paths.map(path => {

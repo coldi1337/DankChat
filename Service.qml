@@ -366,7 +366,13 @@ PluginComponent {
         running: root.surfaceOpen && !!root.selectedChat && !root.demo
         onTriggered: { root.presenceClock = Date.now() / 1000; root.loadPresence(); }
     }
+    // Test seam: when set, calls are routed here instead of the bridge so the
+    // isolated service test can observe/stub requests. QML methods are read-only
+    // under Qt 6 and can no longer be reassigned, so overriding happens via this
+    // property rather than by replacing the function.
+    property var sendRequestOverride: null
     function sendRequest(provider, action, payload, callback) {
+        if (sendRequestOverride) return sendRequestOverride(provider, action, payload, callback);
         if (!bridge.running || demo) return false;
         const account = payload?.account ?? payload?.chat?.account ?? "";
         if (["status", "chats"].includes(action) && Object.values(pending).some(entry => entry.provider === provider && entry.account === account && entry.action === action)) return false;
@@ -424,7 +430,9 @@ PluginComponent {
     function refreshProvider(provider) {
         accounts.filter(a => a.provider === provider).forEach(account => refreshAccount(provider, account.id));
     }
+    property var refreshAccountOverride: null
     function refreshAccount(provider, accountId) {
+        if (refreshAccountOverride) return refreshAccountOverride(provider, accountId);
         if (demo || (provider === "telegram" && !telegramEnabled) || (provider === "whatsapp" && !whatsappEnabled)) return;
         if (!accounts.some(a => a.provider === provider && a.id === accountId)) return;
         const identity = accountKey(provider, accountId);

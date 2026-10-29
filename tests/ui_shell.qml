@@ -2,7 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Common
-import qs.DankCommon.Common as DC
+import qs.DCommon.Common as DC
 import qs.Modals.FileBrowser
 import qs.Widgets
 import "testplugin/linkify.js" as Colors
@@ -34,7 +34,7 @@ ShellRoot {
         id: testFiles
         property bool connected: true
         property var capabilities: ({})
-        property var userDirs: [{key: "home", name: "Test files", path: "/tmp"}]
+        property var userDirs: [{key: "home", name: "Test files", path: "/tmp", iconName: "folder"}]
         signal watchEvent(var data)
         function watch(path, options, callback) { Qt.callLater(() => callback({watchId: "fixture", entries: [], total: 0, watching: true})); }
         function unwatch(id) {}

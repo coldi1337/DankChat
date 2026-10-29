@@ -23,11 +23,10 @@ with tempfile.TemporaryDirectory(prefix='dankchat-ui-') as directory:
     for source in list(repo.glob('*.qml')) + list(repo.glob('*.js')):
         shutil.copy2(source, plugin / source.name)
     if '--missing-picker' in sys.argv:
-        for relative in ('DankCommon/FileBrowser/FilePicker.qml', 'DankCommon/Modals/FileBrowser/FileBrowserContent.qml', 'Modals/FileBrowser/FileBrowserContent.qml'):
-            target = base / relative
-            if target.exists():
-                target.parent.chmod(target.parent.stat().st_mode | 0o700)
-                target.unlink()
+        # DMS 2.0 depends on its own FilePicker component, so deleting it breaks the whole
+        # shell. The plugin honors DANKCHAT_TEST_MISSING_PICKER (set below) to exercise the
+        # no-compatible-picker branch without touching DMS's files.
+        pass
     if '--invalid-view' in sys.argv:
         (plugin / 'ChatView.qml').write_text('import QtQuick\nItem { MissingFixtureType {} }\n')
     (plugin / 'scripts').mkdir()

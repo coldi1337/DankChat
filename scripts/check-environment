@@ -6,6 +6,8 @@ import sys
 
 
 def file_picker(source):
+    if (source / 'DCommon/FileBrowser/FilePicker.qml').is_file():
+        return 'modern (DCommon.FileBrowser.FilePicker)'
     if (source / 'DankCommon/FileBrowser/FilePicker.qml').is_file():
         return 'modern (DankCommon.FileBrowser.FilePicker)'
     if (source / 'DankCommon/Modals/FileBrowser/FileBrowserContent.qml').is_file():
