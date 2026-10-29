@@ -1,5 +1,26 @@
 # Validation record
 
+## 0.6.1 DMS compatibility — 2026-10-29
+
+Reviewed and integrated PR #3 by junamat, preserving its three commits. The UI
+runner additionally selects the shared-module import for the host being tested,
+so the same fixtures work with both `DankCommon` and `DCommon`.
+
+- 120 application Python tests passed; 153 vendored WhatsApp tests ran with one
+  skip and no failures. QML parsing, 12 QtTest checks and release-manifest
+  validation passed with Qt 6.12.0 and Quickshell 0.3.2.
+- Isolated UI checks in German and English, service checks, missing-picker
+  handling and preview rendering passed against local DMS 1.6.3 and the official
+  DMS 2.0.0 source. Deliberately invalid views failed as expected on both.
+- The preflight detects both the legacy picker and the renamed DCommon picker;
+  a regression assertion covers the new component path.
+
+DMS 2.0.0 source commit: `9b413296b16721f7679fb62e624cb1ed2433fa58`, with its
+pinned shared-component submodule `ebf5e6c002da1bdaa4aaa2f319fea7b8507abc42`.
+This tests those QML sources on the installed runtime, not a replacement DMS
+package. Tests used temporary HOME/XDG directories, a private bus and synthetic
+chats. No real accounts were used and the live shell was not restarted.
+
 ## 0.6.0 review validation — 2026-10-06
 
 Reviewed the complete proposed diff in the separate `fix/review-v0.5.1`

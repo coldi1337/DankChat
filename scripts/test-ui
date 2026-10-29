@@ -18,15 +18,14 @@ with tempfile.TemporaryDirectory(prefix='dankchat-ui-') as directory:
     for child in dms.iterdir():
         if child.is_dir():
             shutil.copytree(child, base / child.name)
-    (base / 'shell.qml').write_text((repo / ('tests/preview_shell.qml' if '--preview' in sys.argv else 'tests/service_shell.qml' if '--service' in sys.argv else 'tests/ui_shell.qml')).read_text())
+    shell = (repo / ('tests/preview_shell.qml' if '--preview' in sys.argv else 'tests/service_shell.qml' if '--service' in sys.argv else 'tests/ui_shell.qml')).read_text()
+    # Keep the same fixtures usable with both host module names.
+    if not (dms / 'DCommon/Common').is_dir() and (dms / 'DankCommon/Common').is_dir():
+        shell = shell.replace('import qs.DCommon.Common as DC', 'import qs.DankCommon.Common as DC')
+    (base / 'shell.qml').write_text(shell)
     plugin = base / 'testplugin'; plugin.mkdir()
     for source in list(repo.glob('*.qml')) + list(repo.glob('*.js')):
         shutil.copy2(source, plugin / source.name)
-    if '--missing-picker' in sys.argv:
-        # DMS 2.0 depends on its own FilePicker component, so deleting it breaks the whole
-        # shell. The plugin honors DANKCHAT_TEST_MISSING_PICKER (set below) to exercise the
-        # no-compatible-picker branch without touching DMS's files.
-        pass
     if '--invalid-view' in sys.argv:
         (plugin / 'ChatView.qml').write_text('import QtQuick\nItem { MissingFixtureType {} }\n')
     (plugin / 'scripts').mkdir()

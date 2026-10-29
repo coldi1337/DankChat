@@ -106,6 +106,11 @@ class SentPreviewTests(unittest.TestCase):
             modern.parent.mkdir(parents=True); modern.touch()
             self.assertEqual(module.check_widgets(source), [])
             modern.unlink()
+            renamed = source / 'DCommon/FileBrowser/FilePicker.qml'
+            renamed.parent.mkdir(parents=True); renamed.touch()
+            self.assertEqual(module.check_widgets(source), [])
+            self.assertEqual(module.file_picker(source), 'modern (DCommon.FileBrowser.FilePicker)')
+            renamed.unlink()
             legacy = source / 'Modals/FileBrowser/FileBrowserContent.qml'
             legacy.parent.mkdir(parents=True)
             legacy.write_text('import qs.DankCommon.Modals.FileBrowser as DC\nDC.FileBrowserContent {}')

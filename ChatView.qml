@@ -724,7 +724,7 @@ Item {
                                 padding: 6
                                 selectionColor: Theme.primary
                                 selectedTextColor: Theme.primaryText
-                                // Placeholder is rendered as a sibling Label (see composerPlaceholder) instead of
+                                // Render the placeholder as an explicitly sized Label instead of
                                 // TextArea's built-in PlaceholderText, which binding-loops on width inside a ScrollView.
                                 readonly property string placeholderHint: root.service.demo ? I18n.trFor("dankChat", "Demo — sending disabled") : I18n.trFor("dankChat", "Write a message")
                                 color: Theme.surfaceText

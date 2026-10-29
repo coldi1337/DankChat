@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.1 — 2026-10-29
+
+### Fixed
+
+- Restore attachment and save dialogs on DMS 2.0 by recognizing the renamed
+  `DCommon` file-picker module, while retaining the DMS 1.6.x fallbacks.
+- Avoid QML binding loops in the message placeholder and when a file-picker
+  error closes its dialog.
+- Keep the isolated UI and service tests working with both DMS module names
+  and runtimes that do not allow replacing QML methods.
+
+Thanks to [@junamat](https://github.com/junamat) for
+[PR #3](https://github.com/coldi1337/DankChat/pull/3).
+
+The minimum DMS version and external dependencies are unchanged. The Telegram
+application-ID issue remains open, as documented in 0.6.0.
+
 ## 0.6.0 — 2026-10-06
 
 ### Fixed

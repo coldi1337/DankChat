@@ -57,7 +57,8 @@ DankChat uses the public `DankPopout` component, including on DMS Git builds
 that no longer export `DankPopoutStandalone`. If an older DankChat version
 reports **DankPopoutStandalone is not a type**, update DankChat. Version 0.5.1
 also fixes blank windows caused by **FileBrowserContent is not a type** on newer
-DMS builds, while retaining the older file picker. Run
+DMS builds, while retaining the older file picker. Version 0.6.1 also supports
+the renamed file-picker module in DMS 2.0. Run
 `python3 scripts/check-environment` to check the required component files.
 
 ## Everyday use
