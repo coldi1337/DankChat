@@ -20,6 +20,8 @@ Item {
     readonly property alias attachmentPicker: filePickerLoader.item
     function previewAttachmentPicker(opened) { if (opened) fileDialog.open(); else fileDialog.close(); }
     readonly property bool narrow: width < 620
+    readonly property var enabledAccounts: (root.service.accounts || []).filter(a => a.provider === "telegram" ? root.service.telegramEnabled : root.service.whatsappEnabled)
+    readonly property bool singleAccount: root.enabledAccounts.length <= 1
     signal expandRequested()
     signal closeRequested()
     property bool receivedKeyboardFocus: false
@@ -187,6 +189,7 @@ Item {
                 Column {
                     id: accountSelectors
                     objectName: "accountSelectors"
+                    visible: !root.singleAccount
                     Layout.fillWidth: true
                     spacing: Theme.spacingXS
                     DankButton {
@@ -199,7 +202,7 @@ Item {
                         onClicked: { root.service.accountFilter = "all"; root.service.filter = "all"; }
                     }
                     Repeater {
-                        model: (root.service.accounts || []).filter(a => a.provider === "telegram" ? root.service.telegramEnabled : root.service.whatsappEnabled)
+                        model: root.enabledAccounts
                         delegate: DankButton {
                             id: accountButton
                             required property var modelData
@@ -270,7 +273,7 @@ Item {
                                     Layout.fillWidth: true
                                     DankIcon { visible: !!chatRow.modelData.pinned; name: "push_pin"; size: 14; color: Theme.primary }
                                     Label { Layout.fillWidth: true; Layout.minimumWidth: 0; text: chatRow.modelData.name; wrapMode: Text.NoWrap; maximumLineCount: 1; elide: Text.ElideRight; font.weight: Font.Medium }
-                                    Label { text: chatRow.modelData.provider === "telegram" ? "TG" : "WA"; wrapMode: Text.NoWrap; color: Theme.primary; font.pixelSize: Theme.fontSizeSmall }
+                                    Label { visible: !root.singleAccount; text: chatRow.modelData.provider === "telegram" ? "TG" : "WA"; wrapMode: Text.NoWrap; color: Theme.primary; font.pixelSize: Theme.fontSizeSmall }
                                     Label { objectName: "chatTime"; visible: text.length > 0; text: root.chatTime(chatRow.modelData.timestamp); wrapMode: Text.NoWrap; color: Theme.surfaceVariantText; font.pixelSize: Theme.fontSizeSmall }
                                 }
                                 Label { Layout.fillWidth: true; Layout.minimumWidth: 0; text: chatRow.modelData.preview; wrapMode: Text.NoWrap; maximumLineCount: 1; elide: Text.ElideRight; color: Theme.surfaceVariantText; font.pixelSize: Theme.fontSizeSmall }
@@ -344,7 +347,9 @@ Item {
                         Label {
                             objectName: "chatPresenceLabel"
                             Layout.fillWidth: true
-                            text: root.service.selectedChat ? root.service.accountLabel(root.service.selectedChat) + " · " + (root.service.selectedChat.provider === "telegram" ? "TG" : "WA") + (root.service.presenceText ? " · " + root.service.presenceText : "") : I18n.trFor("dankChat", "Choose a chat")
+                            visible: text.length > 0
+                            readonly property string accountText: root.singleAccount ? "" : root.service.accountLabel(root.service.selectedChat) + " · " + (root.service.selectedChat?.provider === "telegram" ? "TG" : "WA")
+                            text: root.service.selectedChat ? [accountText, root.service.presenceText].filter(part => !!part).join(" · ") : I18n.trFor("dankChat", "Choose a chat")
                             elide: Text.ElideRight
                             color: Theme.surfaceVariantText; font.pixelSize: Theme.fontSizeSmall
                         }

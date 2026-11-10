@@ -69,7 +69,7 @@ with tempfile.TemporaryDirectory(prefix='dankchat-ui-') as directory:
     success = False
     try:
         time.sleep(2)
-        for step in range(12 if '--preview' in sys.argv else 290 if '--service' in sys.argv else 155):
+        for step in range(12 if '--preview' in sys.argv else 290 if '--service' in sys.argv else 160):
             if process.poll() is not None:
                 print('TEST: shell exited before step', step + 1)
                 break
