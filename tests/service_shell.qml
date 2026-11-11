@@ -14,10 +14,63 @@ ShellRoot {
     property var readCalls: []
     property int attachmentsSent: -1
     property string recoveryChatKey: ""
+    function accountFilterRegressions(chat) {
+        const send = chat.sendRequestOverride, refresh = chat.refreshAccountOverride;
+        const fields = ["accounts", "accountAuthorizations", "accountStatuses", "accountFilter", "filter", "pluginData", "chats", "selectedChat", "messages", "statuses", "syncFailures", "chatSignatures"];
+        const original = {};
+        fields.forEach(key => original[key] = chat[key]);
+        try {
+            chat.pluginData = Object.assign({}, chat.pluginData, {telegramEnabled: true, whatsappEnabled: true});
+            chat.accounts = [{provider: "telegram", id: "", label: "TG"}, {provider: "whatsapp", id: "", label: "WA"}];
+            chat.accountAuthorizations = {};
+            chat.refreshAccountOverride = null;
+            const authorized = {telegram: true, whatsapp: false};
+            let failed = false;
+            chat.sendRequestOverride = (provider, action, payload, callback) => {
+                const key = chat.accountKey(provider, payload.account);
+                if (action === "status") callback(failed ? {ok: false, error: "Offline"} : {ok: true, authorized: !!authorized[key]});
+                else if (action === "chats") callback({ok: true, chats: []});
+                else if (action === "logout") { authorized[key] = false; callback({ok: true}); }
+                else if (action === "login") { authorized[key] = true; callback({ok: true}); }
+                return true;
+            };
+            if (chat.filterAccounts.length !== 2) return "FAIL unknown account hidden before status check";
+            chat.accountFilter = "whatsapp"; chat.filter = "whatsapp";
+            chat.refresh();
+            if (chat.filterAccounts.length !== 1 || chat.filterAccounts[0].provider !== "telegram") return "FAIL unlinked default counted as linked";
+            if (chat.accountFilter !== "all" || chat.filter !== "all") return "FAIL single account retained hidden filter";
+            failed = true; chat.refresh();
+            if (chat.filterAccounts.length !== 1) return "FAIL network error changed account selectors";
+            failed = false; chat.accountAction("whatsapp", "login", "");
+            if (chat.filterAccounts.length !== 2) return "FAIL linking second account did not restore selectors";
+            chat.accounts = chat.accounts.concat([{provider: "telegram", id: "work", label: "Work"}]);
+            authorized["telegram:work"] = true; chat.refresh();
+            chat.accountFilter = "telegram:work";
+            chat.accountAction("telegram", "logout", "work");
+            if (chat.filterAccounts.length !== 2 || chat.accountFilter !== "all") return "FAIL additional account logout left stale filter";
+            if (chat.accountAuthorizations.telegram !== true) return "FAIL additional logout disconnected default";
+            chat.accountFilter = "telegram"; chat.filter = "telegram";
+            chat.pluginData = Object.assign({}, chat.pluginData, {telegramEnabled: false});
+            if (chat.filterAccounts.length !== 1 || chat.accountFilter !== "all" || chat.filter !== "all") return "FAIL disabled service retained hidden filter";
+            chat.pluginData = Object.assign({}, chat.pluginData, {telegramEnabled: true});
+            chat.refresh();
+            if (chat.filterAccounts.length !== 2) return "FAIL re-enabled service lost authorization";
+            chat.accountAction("whatsapp", "logout", "");
+            chat.accountAction("telegram", "login", "work");
+            if (chat.filterAccounts.length !== 2 || !chat.filterAccounts.every(a => a.provider === "telegram")) return "FAIL two accounts of same service lost selectors";
+            chat.accountAction("telegram", "logout", "work");
+            chat.accountAction("telegram", "logout", "");
+            if (chat.filterAccounts.length !== 0 || chat.accountFilter !== "all") return "FAIL last logout retained account filter";
+            return "";
+        } finally {
+            chat.sendRequestOverride = send; chat.refreshAccountOverride = refresh;
+            fields.forEach(key => chat[key] = original[key]);
+        }
+    }
     function reviewStateRegressions(chat) {
         const send = chat.sendRequestOverride, refresh = chat.refreshAccountOverride;
         const original = {};
-        const fields = ["selectedChat", "messages", "readingLatest", "historyContext", "loadingMessages", "settingsOpen", "accountsOpen", "pluginData", "chats", "automaticReadAttempts", "automaticReadFailures", "markingRead", "writing", "errorText", "chatSignatures", "statuses", "accountStatuses"];
+        const fields = ["selectedChat", "messages", "readingLatest", "historyContext", "loadingMessages", "settingsOpen", "accountsOpen", "pluginData", "chats", "automaticReadAttempts", "automaticReadFailures", "markingRead", "writing", "errorText", "chatSignatures", "statuses", "accountStatuses", "accountAuthorizations"];
         fields.forEach(key => original[key] = chat[key]);
         try {
             const target = chat.chats.find(row => row.provider === "telegram" && !row.account);
@@ -133,6 +186,9 @@ ShellRoot {
                 chat.openDropdown();
             }
             if (root.step <= 200 && root.step % 10 === 5) chat.openWindow();
+            // A popout may legitimately close on compositor focus changes.
+            // Keep a normal window open for the asynchronous presence assertion.
+            if (root.step === 181) chat.openWindow();
             if (root.step === 201) { chat.setDraft("Keep this text"); chat.startVoice(); }
             if (root.step === 202) { if (chat.voiceState !== "recording") return "FAIL voice start"; chat.stopVoice(); }
             if (root.step === 203) { if (chat.voiceState !== "ready" || !chat.voicePath) return "FAIL voice stop"; chat.sendVoice(); }
@@ -231,7 +287,10 @@ ShellRoot {
                 chat.sendRequest("", "test_read_calls", {}, result => { if (result.calls.length !== root.readCalls.length) root.readCalls = ["unexpected"]; });
             }
             if (root.step === 288 && root.readCalls.includes("unexpected")) return "FAIL hidden chat marked read";
-            if (root.step === 289) { const failure = root.reviewStateRegressions(chat); if (failure) return failure; }
+            if (root.step === 289) {
+                let failure = root.reviewStateRegressions(chat); if (failure) return failure;
+                failure = root.accountFilterRegressions(chat); if (failure) return failure;
+            }
             return root.step === 290 ? (automaticMediaObserved ? "PASS service refresh, surfaces and automatic media" : "FAIL automatic media not loaded") : "STEP " + root.step;
         }
     }

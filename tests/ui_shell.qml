@@ -56,6 +56,10 @@ ShellRoot {
         property bool whatsappReadState: false
         property var accounts: [{provider: "telegram", id: "", label: "Private"}, {provider: "whatsapp", id: "", label: "Work"}]
         property var accountStatuses: ({})
+        property var accountAuthorizations: ({})
+        readonly property var filterAccounts: accounts.filter(a =>
+            (a.provider === "telegram" ? telegramEnabled : whatsappEnabled)
+            && accountAuthorizations[accountKey(a.provider, a.id)] !== false)
         property string accountFilter: "all"
         property string browseMode: ""
         property string messageQuery: ""
@@ -516,7 +520,8 @@ ShellRoot {
                 view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/review-dates-" + (root.english ? "en" : "de") + ".png"));
             }
             if (root.step === 151) {
-                mock.accounts = [{provider: "telegram", id: "", label: "Private"}];
+                mock.accounts = [{provider: "telegram", id: "", label: "Private"}, {provider: "whatsapp", id: "", label: "Work"}];
+                mock.accountAuthorizations = {telegram: true, whatsapp: false};
                 mock.selectedChat = null;
             }
             if (root.step === 152) {
@@ -532,7 +537,7 @@ ShellRoot {
                 const label = root.findItem(view.item, "chatPresenceLabel");
                 if (!label.visible || label.text !== I18n.trFor("dankChat", "Typing…")) return "FAIL presence hidden with a single account";
                 mock.presenceText = "";
-                mock.accounts = [{provider: "telegram", id: "", label: "Private"}, {provider: "whatsapp", id: "", label: "Work"}];
+                mock.accountAuthorizations = {telegram: true, whatsapp: true};
                 mock.selectedChat = null;
             }
             if (root.step === 155) {

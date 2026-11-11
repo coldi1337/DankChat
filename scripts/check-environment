@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Read-only DMS widget preflight; never changes settings or starts a session."""
-import os
 from pathlib import Path
 import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
+from dms_environment import find_source
 
 
 def file_picker(source):
@@ -31,13 +33,7 @@ def check_widgets(source):
 
 
 def main():
-    configured = os.environ.get('DANKCHAT_DMS_SOURCE')
-    runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
-    candidates = [Path(configured)] if configured else sorted(
-        (runtime / 'danklinux-shell').glob('*/shell.qml'), key=lambda p: p.stat().st_mtime, reverse=True)
-    sources = [p.parent if p.name == 'shell.qml' else p for p in candidates]
-    sources += [] if configured else [Path('/usr/share/quickshell/dms')]
-    source = next((p for p in sources if (p / 'Widgets').is_dir()), None)
+    source = find_source()
     if source is None:
         print('Cannot locate DMS sources. Set DANKCHAT_DMS_SOURCE to the directory containing shell.qml and Widgets.')
         return 1

@@ -58,7 +58,8 @@ that no longer export `DankPopoutStandalone`. If an older DankChat version
 reports **DankPopoutStandalone is not a type**, update DankChat. Version 0.5.1
 also fixes blank windows caused by **FileBrowserContent is not a type** on newer
 DMS builds, while retaining the older file picker. Version 0.6.1 also supports
-the renamed file-picker module in DMS 2.0. Run
+the renamed file-picker module in DMS 2.0. Version 0.6.2 fixes automatic
+source discovery during setup on DMS 2. Run
 `python3 scripts/check-environment` to check the required component files.
 
 ## Everyday use
@@ -74,7 +75,8 @@ open message search and media browsing. **Enter** sends; **Shift+Enter** adds a 
 The microphone button starts a recording, with a preview before sending.
 
 Use the gear for **Settings**, or **Accounts** to name each account and choose
-whether reading a chat here also marks it as read on your other devices. Read
+whether reading a chat here also marks it as read on your other devices.
+With only one connected account, account filters and service labels are hidden. Read
 synchronization is opt-in per service/account. Without it, WhatsApp keeps its
 local badge acknowledgement. Phone-side reads still clear the remote unread
 state. Sender-visible receipts remain subject to each service’s privacy rules.

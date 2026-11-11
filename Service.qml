@@ -56,6 +56,21 @@ PluginComponent {
     Timer { id: readRetryTimer; interval: 15500; onTriggered: root.readVisibleChat() }
     property var accounts: [{provider: "telegram", id: "", label: "Telegram"}, {provider: "whatsapp", id: "", label: "WhatsApp"}]
     property var accountStatuses: ({})
+    // Retain the last confirmed authorization through transport failures and
+    // reconnects. Unknown accounts stay available until their first status check.
+    property var accountAuthorizations: ({})
+    readonly property var filterAccounts: accounts.filter(a =>
+        (a.provider === "telegram" ? telegramEnabled : whatsappEnabled)
+        && accountAuthorizations[accountKey(a.provider, a.id)] !== false)
+    onFilterAccountsChanged: {
+        if (filterAccounts.length <= 1 || !filterAccounts.some(a => accountKey(a.provider, a.id) === accountFilter)) accountFilter = "all";
+        if (filterAccounts.length <= 1 || !filterAccounts.some(a => a.provider === filter)) filter = "all";
+    }
+    function rememberAccountAuthorization(provider, account, result) {
+        const identity = accountKey(provider, account);
+        if (result.ok && typeof result.authorized === "boolean" && accountAuthorizations[identity] !== result.authorized)
+            accountAuthorizations = Object.assign({}, accountAuthorizations, {[identity]: result.authorized});
+    }
     property string accountFilter: "all"
     function accountKey(provider, account) { return provider + (account ? ":" + account : ""); }
     function accountLabel(chat) { return accounts.find(a => a.provider === chat?.provider && a.id === (chat?.account || ""))?.label || chat?.provider || ""; }
@@ -440,6 +455,7 @@ PluginComponent {
         sendRequest(provider, "status", {account: accountId}, result => {
             if (accountBusy[identity]) return;
             accountStatuses = Object.assign({}, accountStatuses, {[identity]: result});
+            rememberAccountAuthorization(provider, accountId, result);
             if (!accountId) {
                 if (!acceptProviderStatus(provider, result)) return;
             } else if (!result.ok) {
@@ -695,6 +711,7 @@ PluginComponent {
             finish();
             if (!result.ok) { errorText = I18n.trFor("dankChat", result.error); refresh(); return; }
             if (action === "logout") {
+                rememberAccountAuthorization(provider, account, {ok: true, authorized: false});
                 messageCache = {}; confirmedMessages = {};
                 const keys = chats.filter(chat => chat.provider === provider && (chat.account || "") === account).map(chat => chat.key);
                 const d = Object.assign({}, drafts), r = Object.assign({}, replies);

@@ -1,5 +1,35 @@
 # Validation record
 
+## 0.6.2 source discovery and account filters — 2026-11-11
+
+Integrated PR #5 by MilanJa with its original commit, then corrected account
+counting and stale filters. Configured but unlinked accounts are excluded after
+their first successful status check; transport failures retain the last known
+authorization. No account credentials are persisted by this UI state.
+
+- 126 application Python tests passed, including six new source-discovery tests.
+  Both runtime directory layouts are exercised through the actual preflight
+  command without a source override. Explicit directory/file overrides, newest
+  valid tree selection, system fallback and stale symlinks are also covered.
+- 153 vendored WhatsApp tests ran with one skip and no failures. QML parsing,
+  12 QtTest checks and manifest-schema validation passed.
+- German and English UI, service, missing-picker and preview checks passed on
+  local DMS 2.0.0, Quickshell 0.3.2 and Qt 6.12.0 under Niri. The deliberately
+  invalid view was rejected as expected. The single-account preview was inspected.
+- The real service fixture covers unknown/linked/unlinked defaults, login,
+  logout of default and additional accounts, temporary status failures,
+  disabling/re-enabling a service and two accounts of the same service.
+  The UI fixture verifies that typing status remains visible with one account.
+- The presence test explicitly opens an app window before its assertion:
+  a dropdown may correctly close on compositor focus changes. The harness now
+  isolates the DMS daemon socket as well as HOME/XDG and the session bus.
+
+Tests used synthetic accounts and media. No real messages or account actions were
+performed, and the live shell was not restarted. DMS 1.6.x source discovery is
+covered by fixtures; its full UI runtime was not rerun for this patch. DMS 2 still
+warns about deprecated compatibility widgets; replacing those while retaining
+older-host support is separate work.
+
 ## 0.6.1 DMS compatibility — 2026-10-29
 
 Reviewed and integrated PR #3 by junamat, preserving its three commits. The UI

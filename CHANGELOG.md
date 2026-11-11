@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.2 — 2026-11-11
+
+### Fixed
+
+- Setup now finds DMS 2 source trees under `dms-shell` automatically, fixing
+  “Cannot locate DMS sources” on a fresh DMS 2 installation (#4).
+  The environment check and UI tests share the same discovery logic and still
+  support DMS 1.6.x, system installations and an explicit source override.
+- Clear account/service filters when their account is disconnected or disabled,
+  so a hidden filter cannot leave the chat list empty.
+
+### Improved
+
+- Hide account filters and TG/WA labels when only one account is connected.
+  Typing and online status remain visible. Unlinked default accounts no longer
+  count as connected, and temporary connection failures keep the last known
+  account state rather than changing the layout.
+
+Thanks to [@MilanJa](https://github.com/MilanJa) for
+[PR #5](https://github.com/coldi1337/DankChat/pull/5).
+
+The minimum DMS version and external dependencies are unchanged.
+
 ## 0.6.1 — 2026-10-29
 
 ### Fixed

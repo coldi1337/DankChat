@@ -25,7 +25,10 @@ Qt test tools must be installed.
 
 The UI harness needs a working DMS/Wayland session, FFmpeg, `qs` and
 `dbus-run-session`. Set `DANKCHAT_DMS_SOURCE` to your active DMS source directory
-if it differs from the default in `scripts/test-ui`.
+to select a particular installation. Both the UI runner and the setup preflight
+use `backend/dms_environment.py`: they search `dms-shell` and `danklinux-shell`
+under the runtime directory, prefer the newest valid tree, then fall back to
+`/usr/share/quickshell/dms`. The override accepts a directory or its `shell.qml`.
 
 ```sh
 python3 scripts/test-ui

@@ -11,8 +11,12 @@ import shutil
 import time
 
 repo = Path(__file__).resolve().parents[1]
-candidates = sorted(Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')).glob('danklinux-shell/*/shell.qml'), key=lambda path: path.stat().st_mtime, reverse=True)
-dms = Path(os.environ['DANKCHAT_DMS_SOURCE']) if 'DANKCHAT_DMS_SOURCE' in os.environ else candidates[0].parent if candidates else Path('/usr/share/quickshell/dms')
+sys.path.insert(0, str(repo / 'backend'))
+from dms_environment import find_source
+
+dms = find_source()
+if dms is None:
+    sys.exit('Cannot locate DMS sources. Set DANKCHAT_DMS_SOURCE to the directory containing shell.qml and Widgets.')
 with tempfile.TemporaryDirectory(prefix='dankchat-ui-') as directory:
     base = Path(directory)
     for child in dms.iterdir():
@@ -61,6 +65,8 @@ with tempfile.TemporaryDirectory(prefix='dankchat-ui-') as directory:
     if display and not display.startswith('/'):
         env['WAYLAND_DISPLAY'] = str(Path(env.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')) / display)
     env['XDG_RUNTIME_DIR'] = str(runtime)
+    # DMS 2 exports its daemon socket explicitly; do not inherit the live one.
+    env['DMS_SOCKET'] = str(runtime / 'synthetic-dms.sock')
     env['NO_AT_BRIDGE'] = '1'
     env['QT_ACCESSIBILITY'] = '0'
     env.pop('AT_SPI_BUS_ADDRESS', None)

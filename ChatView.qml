@@ -20,7 +20,7 @@ Item {
     readonly property alias attachmentPicker: filePickerLoader.item
     function previewAttachmentPicker(opened) { if (opened) fileDialog.open(); else fileDialog.close(); }
     readonly property bool narrow: width < 620
-    readonly property var enabledAccounts: (root.service.accounts || []).filter(a => a.provider === "telegram" ? root.service.telegramEnabled : root.service.whatsappEnabled)
+    readonly property var enabledAccounts: root.service.filterAccounts
     readonly property bool singleAccount: root.enabledAccounts.length <= 1
     signal expandRequested()
     signal closeRequested()

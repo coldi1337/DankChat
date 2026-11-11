@@ -45,6 +45,10 @@ ShellRoot {
         property bool whatsappReadState: false
         property var accounts: [{provider: "telegram", id: "", label: "Private"}, {provider: "whatsapp", id: "", label: "Work"}]
         property var accountStatuses: ({})
+        property var accountAuthorizations: ({})
+        readonly property var filterAccounts: accounts.filter(a =>
+            (a.provider === "telegram" ? telegramEnabled : whatsappEnabled)
+            && accountAuthorizations[accountKey(a.provider, a.id)] !== false)
         property string accountFilter: "all"
         property string browseMode: ""
         property string messageQuery: ""
