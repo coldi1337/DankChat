@@ -515,7 +515,34 @@ ShellRoot {
                 if (!heading || heading.text !== I18n.trFor("dankChat", "Today")) return "FAIL date section was not rendered";
                 view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/review-dates-" + (root.english ? "en" : "de") + ".png"));
             }
-            return root.step === 151 ? "PASS accounts, settings, search, resize, picker selection/save/cancel, dates and external media" : "STEP " + root.step;
+            if (root.step === 151) {
+                mock.accounts = [{provider: "telegram", id: "", label: "Private"}];
+                mock.selectedChat = null;
+            }
+            if (root.step === 152) {
+                if (root.findItem(view.item, "accountSelectors").visible) return "FAIL account filter shown with a single account";
+                mock.selectedChat = mock.chats[0];
+            }
+            if (root.step === 153) {
+                const label = root.findItem(view.item, "chatPresenceLabel");
+                if (label.visible || label.text.includes("TG")) return "FAIL account label shown with a single account";
+                mock.presenceText = I18n.trFor("dankChat", "Typing…");
+            }
+            if (root.step === 154) {
+                const label = root.findItem(view.item, "chatPresenceLabel");
+                if (!label.visible || label.text !== I18n.trFor("dankChat", "Typing…")) return "FAIL presence hidden with a single account";
+                mock.presenceText = "";
+                mock.accounts = [{provider: "telegram", id: "", label: "Private"}, {provider: "whatsapp", id: "", label: "Work"}];
+                mock.selectedChat = null;
+            }
+            if (root.step === 155) {
+                if (!root.findItem(view.item, "accountSelectors").visible) return "FAIL account filter hidden with two accounts";
+                mock.selectedChat = mock.chats[0];
+            }
+            if (root.step === 156) {
+                if (!root.findItem(view.item, "chatPresenceLabel").text.includes(" · ")) return "FAIL account label hidden with two accounts";
+            }
+            return root.step === 157 ? "PASS accounts, settings, search, resize, picker selection/save/cancel, dates and external media" : "STEP " + root.step;
 
         }
     }

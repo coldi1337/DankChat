@@ -187,6 +187,13 @@ ShellRoot {
                 if (root.promo) promoBoard.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/dankchat-promo.png"));
                 else view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/dankchat-preview.png"));
             }
+            if (root.step === 8 && !root.promo) {
+                mock.accounts = [{provider: "whatsapp", id: "", label: "WhatsApp"}];
+                mock.chats = mock.chats.filter(chat => chat.provider === "whatsapp");
+                mock.selectedChat = mock.chats[0];
+                mock.reply = null;
+            }
+            if (root.step === 10 && !root.promo) view.item.grabToImage(result => result.saveToFile(Quickshell.env("DANKCHAT_TEST_ARTIFACTS") + "/dankchat-single-account.png"));
             return root.step === 12 ? "PASS synthetic preview" : "STEP " + root.step;
         }
     }
