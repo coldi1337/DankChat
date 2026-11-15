@@ -145,13 +145,19 @@ Item {
             Action { iconName: "close"; tooltipText: I18n.trFor("dankChat", "Close"); onClicked: root.closeRequested() }
         }
         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.outline; opacity: 0.3 }
-        Label {
+        RowLayout {
+            objectName: "errorBanner"
             Layout.fillWidth: true
             visible: root.service.errorText.length > 0
-            text: root.service.errorText
-            color: Theme.error
-            wrapMode: Text.Wrap
-            font.pixelSize: Theme.fontSizeSmall
+            spacing: Theme.spacingS
+            Label {
+                Layout.fillWidth: true
+                text: root.service.errorText
+                color: Theme.error
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeSmall
+            }
+            Action { objectName: "dismissErrorAction"; iconName: "close"; width: 26; height: 26; iconSize: 16; iconColor: Theme.error; tooltipText: I18n.trFor("dankChat", "Dismiss"); onClicked: root.service.errorText = "" }
         }
 
         RowLayout {

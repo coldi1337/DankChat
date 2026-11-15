@@ -494,6 +494,9 @@
   "Close": {
     "Close": "Schließen"
   },
+  "Dismiss": {
+    "Dismiss": "Ausblenden"
+  },
   "Close dropdown when focus leaves": {
     "Close dropdown when focus leaves": "Dropdown beim Fokuswechsel schließen"
   },

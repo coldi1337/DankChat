@@ -190,6 +190,13 @@ ShellRoot {
             if (root.step >= 70 && root.step < 121) { mock.accountsOpen = false; root.testWidth = 480; Theme.fontScale = 1; }
             if (root.step >= 41 && root.step <= 43) mock.accountsOpen = false;
             if (root.step === 15) mock.presenceText = I18n.trFor("dankChat", "Typing…");
+            if (root.step === 28 && Quickshell.env("DANKCHAT_TEST_MISSING_PICKER") !== "1") {
+                mock.errorText = pinError;
+                const banner = root.findItem(view.item, "errorBanner");
+                if (!banner || !banner.visible) return "FAIL error banner hidden while an error is set";
+                root.findItem(view.item, "dismissErrorAction").clicked();
+                if (mock.errorText !== "" || banner.visible) return "FAIL dismissing the error banner";
+            }
             if (root.step === 16) {
                 const label = root.findItem(view.item, "chatPresenceLabel");
                 if (!label || !label.text.includes(root.english ? "Typing…" : "Schreibt …")) return "FAIL translated typing status";
