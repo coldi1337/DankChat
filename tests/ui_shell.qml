@@ -191,11 +191,26 @@ ShellRoot {
             if (root.step >= 41 && root.step <= 43) mock.accountsOpen = false;
             if (root.step === 15) mock.presenceText = I18n.trFor("dankChat", "Typing…");
             if (root.step === 28 && Quickshell.env("DANKCHAT_TEST_MISSING_PICKER") !== "1") {
+                mock.demo = false;
+                mock.reconnecting = true;
+                mock.syncFailures = {whatsapp: true};
                 mock.errorText = pinError;
                 const banner = root.findItem(view.item, "errorBanner");
+                const dismiss = root.findItem(view.item, "dismissErrorAction");
+                const connection = root.findItem(view.item, "connectionBanner");
                 if (!banner || !banner.visible) return "FAIL error banner hidden while an error is set";
-                root.findItem(view.item, "dismissErrorAction").clicked();
+                if (!dismiss || dismiss.tooltipText !== (root.english ? "Dismiss" : "Ausblenden") || dismiss.Accessible.name !== dismiss.tooltipText) return "FAIL translated accessible dismiss action";
+                dismiss.clicked();
                 if (mock.errorText !== "" || banner.visible) return "FAIL dismissing the error banner";
+                if (!connection || !connection.visible || !mock.reconnecting || !mock.syncFailures.whatsapp) return "FAIL dismissing error hid connection failure";
+                mock.errorText = I18n.trFor("dankChat", "The original message is unavailable.");
+                if (!banner.visible) return "FAIL new error remained dismissed";
+                mock.reconnecting = false;
+                dismiss.clicked();
+                if (!connection.visible || !mock.syncFailures.whatsapp) return "FAIL dismissing error cleared provider failure";
+                mock.syncFailures = {};
+                if (connection.visible) return "FAIL connection banner remained after recovery";
+                mock.demo = true;
             }
             if (root.step === 16) {
                 const label = root.findItem(view.item, "chatPresenceLabel");
@@ -308,7 +323,7 @@ ShellRoot {
             }
             if (root.step >= 97 && root.step <= 100) {
                 if (!root.observedVideo || root.findItem(view.item, "inlineMediaPlayer") !== root.observedVideo) return "FAIL last video recreated";
-                if (!messagesView.atYEnd || Math.abs(root.observedVideo.mapToItem(messagesView, 0, 0).y - root.videoScroll) > 1) return "FAIL last video scroll unstable";
+                if (!messagesView.atYEnd || Math.abs(root.observedVideo.mapToItem(messagesView, 0, 0).y - root.videoScroll) > 1) return "FAIL last video scroll unstable " + JSON.stringify({atEnd: messagesView.atYEnd, before: root.videoScroll, after: root.observedVideo.mapToItem(messagesView, 0, 0).y, height: root.observedVideo.height, followTail: messagesView.followTail});
             }
             if (root.step === 30) { view.item.savingMedia = true; view.item.exportMessage = {filename: "synthetic.png"}; }
             if (root.step === 10 || root.step === 30) view.item.previewAttachmentPicker(true);

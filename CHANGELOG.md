@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Improved
+
+- Dismiss an error message with the close button beside it. New errors still
+  appear, and the separate connection warning remains visible until recovery.
+  The button has an accessible label in English and German.
+
+Thanks to [@MilanJa](https://github.com/MilanJa) for
+[PR #6](https://github.com/coldi1337/DankChat/pull/6).
+
 ## 0.6.2 — 2026-11-11
 
 ### Fixed

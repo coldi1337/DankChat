@@ -1,5 +1,30 @@
 # Validation record
 
+## PR #6 — dismissible errors — 2026-11-15
+
+Reviewed PR #6 by MilanJa, including the discussion/review state (no comments or
+requested changes). No open issues were found at the time of this review.
+The original contributor commit is retained.
+
+The error banner now has a close action with English/German accessible text.
+Additional assertions cover a subsequent error becoming visible, preserving the
+separate reconnect/provider-failure banner, and hiding that connection banner
+only when the connection state recovers. A narrow German layout with a long
+error was visually inspected.
+
+- 126 application tests passed; 153 WhatsApp tests ran with one skip and no
+  failures. QML parsing, 12 QtTest checks and manifest validation passed.
+- The final German/English UI and missing-picker runs passed on DMS 2.1.2 / Quickshell 0.3.2 /
+  Qt 6.12.0. Tests used synthetic data and private HOME/XDG, bus and DMS socket.
+- The existing video-position assertion intermittently failed at step 97/99
+  in initial German/English runs. The same failure reproduced on unchanged
+  `main` (0.6.2), so it is not a regression introduced by the error-banner PR.
+  Subsequent German and English runs passed without changes to scroll behavior or the
+  assertion tolerance. Failure output now includes position/follow-tail values
+  to help diagnose recurrences; the intermittent failure remains a follow-up.
+
+No real account actions were performed and DMS was not restarted.
+
 ## 0.6.2 source discovery and account filters — 2026-11-11
 
 Integrated PR #5 by MilanJa with its original commit, then corrected account

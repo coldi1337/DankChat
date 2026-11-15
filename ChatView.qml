@@ -161,6 +161,7 @@ Item {
         }
 
         RowLayout {
+            objectName: "connectionBanner"
             Layout.fillWidth: true
             visible: !root.service.demo && (!!root.service.reconnecting || Object.keys(root.service.syncFailures || {}).length > 0)
             Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: I18n.trFor("dankChat", "Connection interrupted — retrying"); color: Theme.surfaceVariantText }
