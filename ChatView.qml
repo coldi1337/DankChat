@@ -565,7 +565,16 @@ Item {
                                     background: null
                                     selectionColor: Theme.primary
                                     selectedTextColor: Theme.primaryText
-                                    Controls.ContextMenu.menu: TextMenu {
+                                    // Qt 6.8 fallback: ContextMenu (attached type) only exists
+                                    // since Qt 6.9. Accepting the right click here also stops
+                                    // the built-in text menu from opening on top of ours.
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        acceptedButtons: Qt.RightButton
+                                        onClicked: mouse => messageMenu.popup(mouse.x, mouse.y)
+                                    }
+                                    TextMenu {
+                                        id: messageMenu
                                         editor: messageText
                                         allowReply: true
                                         allowEdit: messageRow.modelData.out && !!messageRow.modelData.text
@@ -753,7 +762,13 @@ Item {
                                     verticalAlignment: Text.AlignVCenter
                                     wrapMode: Text.NoWrap; elide: Text.ElideRight
                                 }
-                                Controls.ContextMenu.menu: TextMenu { editor: composer; composerPaste: true }
+                                // Qt 6.8 fallback: see the message TextArea above.
+                                MouseArea {
+                                    anchors.fill: parent
+                                    acceptedButtons: Qt.RightButton
+                                    onClicked: mouse => composerMenu.popup(mouse.x, mouse.y)
+                                }
+                                TextMenu { id: composerMenu; editor: composer; composerPaste: true }
                                 onTextChanged: if (text !== root.service.draft) root.service.setDraft(text)
                                 Keys.onPressed: event => {
                                     if (event.matches(StandardKey.Paste)) { event.accepted = true; root.pasteClipboard(); return; }
